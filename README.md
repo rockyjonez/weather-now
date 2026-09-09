@@ -1,7 +1,8 @@
 # Weather Now
 
 Single-page weather dashboard built on the US National Weather Service API
-(`https://api.weather.gov`). It shows current conditions and the next 12 hours,
+(`https://api.weather.gov`). It shows current conditions, the next 12 hours and
+a 10-day outlook,
 with switchable views for temperature, rain, clouds and sky, wind, storms and
 lightning, snow and ice, fire weather, active alerts, and a raw data table.
 
@@ -13,6 +14,7 @@ Live: https://weather-now.exe.xyz
 |---|---|
 | Overview | Hourly strip with NWS icons, at-a-glance tiles, temperature and rain charts |
 | Map | Leaflet map with NOAA nowCOAST layers: radar loop, lightning density, GOES infrared clouds, forecast temperature, feels-like, rain chance, rain amount, snow, cloud cover, wind speed, gusts, wind barbs, humidity, and NWS alert polygons; time slider and play button; click for the value at a point or to load that point's forecast |
+| 10-day | Day cards with NWS text, icons, highs and lows for seven days and Open-Meteo model guidance for days 8 to 10; highs/lows, precipitation and wind charts across all ten days |
 | Temperature | Air, feels-like and dew point lines; heat index / wind chill; NWS HeatRisk; heat and cold alerts |
 | Rain | Probability of precipitation, liquid amount per hour, precipitation type and coverage, flood alerts |
 | Clouds & sky | Sky cover, relative humidity, visibility and ceiling where published, sunrise and sunset |
@@ -71,6 +73,10 @@ Then open `http://localhost:8765/?lat=37.7749&lon=-122.4194`.
 the VM's proxy port. See the script for the one-time nginx setup.
 
 ## Data notes
+
+- The NWS API publishes seven days of forecast. The 10-day view uses it for
+  days 1 to 7 and Open-Meteo (`api.open-meteo.com`, no key) for days 8 to 10
+  and for the numeric series in its charts. Each card names its source.
 
 - Temperatures arrive in °C, wind in km/h, precipitation in mm, heights in m.
   The unit toggle converts on display; nothing is rounded before conversion.

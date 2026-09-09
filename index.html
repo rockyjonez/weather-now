@@ -111,6 +111,17 @@ table.data th:first-child,table.data td:first-child{text-align:left}
 table.data th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.03em;position:sticky;top:0;background:var(--surface)}
 table.data tr.night td{background:var(--night)}
 .empty{color:var(--muted);font-style:italic}
+.days{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
+.day{background:var(--surface2);border-radius:10px;padding:12px 12px 10px;display:flex;flex-direction:column;gap:4px}
+.day .dn{font-weight:600}.day .dn small{font-weight:400;color:var(--muted);margin-left:6px}
+.day .ic{display:flex;align-items:center;gap:10px;margin:4px 0}
+.day .ic img{width:48px;height:48px;border-radius:8px}.day .ic .emo{font-size:36px;line-height:48px;width:48px;text-align:center}
+.day .hl{font-size:20px;font-weight:600;letter-spacing:-.01em}.day .hl small{font-weight:400;color:var(--muted);font-size:15px}
+.day .tx{font-size:13px;color:var(--text2);min-height:2.6em}
+.day .mt{font-size:12px;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 10px}
+.day details{font-size:13px;margin-top:4px}.day summary{cursor:pointer;color:var(--accent)}.day details p{margin:6px 0 0;color:var(--text2)}
+.day .src{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-top:auto;padding-top:6px}
+
 .map{height:560px;border-radius:10px;overflow:hidden;border:1px solid var(--line);background:var(--surface2)}
 @media(max-width:760px){.map{height:420px}}
 .mapctl{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin-bottom:10px}
@@ -198,7 +209,7 @@ function sv(tag, attrs = {}, ...kids) {
 
 // ---------- state ----------
 const VIEWS = [
-  ['overview', 'Overview'], ['map', 'Map'], ['temperature', 'Temperature'], ['rain', 'Rain'], ['clouds', 'Clouds & sky'], ['wind', 'Wind'],
+  ['overview', 'Overview'], ['map', 'Map'], ['tenday', '10-day'], ['temperature', 'Temperature'], ['rain', 'Rain'], ['clouds', 'Clouds & sky'], ['wind', 'Wind'],
   ['storms', 'Storms & lightning'], ['snow', 'Snow & ice'], ['fire', 'Fire weather'], ['alerts', 'Alerts'], ['table', 'Data table']
 ];
 const state = {
@@ -293,11 +304,13 @@ async function load(lat, lon, label, remember) {
   try {
     const pts = await nws(`${API}/points/${lat.toFixed(4)},${lon.toFixed(4)}`);
     const p = pts.properties;
-    const [grid, hourly, stations, alerts] = await Promise.all([
+    const [grid, hourly, stations, alerts, dailyNws, om] = await Promise.all([
       nws(p.forecastGridData),
       nws(p.forecastHourly).catch(() => null),
       nws(p.observationStations).catch(() => null),
-      nws(`${API}/alerts/active?point=${lat.toFixed(4)},${lon.toFixed(4)}`).catch(() => ({ features: [] }))
+      nws(`${API}/alerts/active?point=${lat.toFixed(4)},${lon.toFixed(4)}`).catch(() => ({ features: [] })),
+      nws(p.forecast).catch(() => null),
+      fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}&daily=weather_code,temperature_2m_max,temperature_2m_min,apparent_temperature_max,apparent_temperature_min,precipitation_sum,snowfall_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant,uv_index_max,sunrise,sunset&forecast_days=10&timezone=${encodeURIComponent(p.timeZone || 'auto')}`).then(r => r.ok ? r.json() : null).catch(() => null)
     ]);
     let obs = null;
     if (stations) {
@@ -308,7 +321,7 @@ async function load(lat, lon, label, remember) {
         } catch (e) { }
       }
     }
-    state.data = assemble({ pts: p, grid: grid.properties, hourly: hourly && hourly.properties, obs, alerts: alerts.features || [], lat, lon });
+    state.data = assemble({ pts: p, grid: grid.properties, hourly: hourly && hourly.properties, obs, alerts: alerts.features || [], lat, lon, dailyNws: dailyNws && dailyNws.properties, om });
     state.updated = Date.now();
     if (remember) localStorage.setItem('wx.loc2', JSON.stringify({ lat, lon, label: state.label }));
   } catch (e) {
@@ -320,7 +333,7 @@ async function load(lat, lon, label, remember) {
 const NUMERIC = ['temperature', 'apparentTemperature', 'dewpoint', 'relativeHumidity', 'heatIndex', 'windChill', 'skyCover', 'windDirection', 'windSpeed', 'windGust', 'probabilityOfPrecipitation', 'snowLevel', 'visibility', 'ceilingHeight', 'probabilityOfThunder', 'lightningActivityLevel', 'grasslandFireDangerIndex', 'redFlagThreatIndex', 'hainesIndex', 'twentyFootWindSpeed', 'twentyFootWindDirection', 'transportWindSpeed', 'transportWindDirection', 'mixingHeight', 'pressure', 'heatRisk', 'davisStabilityIndex', 'atmosphericDispersionIndex', 'lowVisibilityOccurrenceRiskIndex', 'wetBulbGlobeTemperature'];
 const ACCUM = ['quantitativePrecipitation', 'snowfallAmount', 'iceAccumulation'];
 
-function assemble({ pts, grid, hourly, obs, alerts, lat, lon }) {
+function assemble({ pts, grid, hourly, obs, alerts, lat, lon, dailyNws, om }) {
   const tz = pts.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone;
   const now = Date.now();
   const h0 = Math.floor(now / HOUR) * HOUR;
@@ -350,7 +363,7 @@ function assemble({ pts, grid, hourly, obs, alerts, lat, lon }) {
   });
   const sun = sunTimes(now, lat, lon);
   const alertsSorted = alerts.map(f => f.properties).sort((a, b) => sevRank(a.severity) - sevRank(b.severity));
-  return { tz, hours, rows, obs, alerts: alertsSorted, pts, grid, sun, radar: pts.radarStation, layers };
+  return { tz, hours, rows, obs, alerts: alertsSorted, pts, grid, sun, radar: pts.radarStation, layers, daily: buildDaily(dailyNws, om, tz) };
 }
 const SEVS = ['Extreme', 'Severe', 'Moderate', 'Minor', 'Unknown'];
 const sevRank = s => { const i = SEVS.indexOf(s); return i < 0 ? 9 : i; };
@@ -358,7 +371,7 @@ const alertMatches = (a, re) => re.test(a.event + ' ' + (a.headline || ''));
 const RE = { storm: /tornado|thunderstorm|severe|lightning|hurricane|tropical|special weather/i, fire: /fire|red flag|smoke/i, snow: /winter|snow|ice|blizzard|freez|frost|cold|wind chill|sleet/i, rain: /flood|rain|hydrologic/i, wind: /wind|gale|storm warning|small craft/i, heat: /heat/i, clouds: /fog|smoke|air quality|dense/i };
 
 // ---------- chart ----------
-function chart({ rows, tz, series, yFmt, yMin, yMax, height = 250, arrows, ticks = 4, integer = false, ariaLabel }) {
+function chart({ rows, tz, series, yFmt, yMin, yMax, height = 250, arrows, ticks = 4, integer = false, ariaLabel, xLabel, tipLabel }) {
   const W = 760, H = height, pad = { l: 52, r: 14, t: 14, b: arrows ? 56 : 34 };
   const n = rows.length, iw = W - pad.l - pad.r, ih = H - pad.t - pad.b, band = iw / n;
   const all = series.flatMap(s => s.values).filter(v => v != null && isFinite(v));
@@ -381,7 +394,7 @@ function chart({ rows, tz, series, yFmt, yMin, yMax, height = 250, arrows, ticks
   }
   if (lo < 0 && hi > 0) svg.append(sv('line', { x1: pad.l, x2: W - pad.r, y1: y(0), y2: y(0), stroke: 'var(--muted)', 'stroke-width': 1 }));
   // x labels
-  rows.forEach((r, i) => svg.append(sv('text', { x: xc(i), y: H - (arrows ? 30 : 10), 'text-anchor': 'middle', 'font-size': 12, fill: i === 0 ? 'var(--text)' : 'var(--muted)', 'font-weight': i === 0 ? 600 : 400 }, i === 0 ? 'Now' : fmtHour(r.t, tz))));
+  rows.forEach((r, i) => svg.append(sv('text', { x: xc(i), y: H - (arrows ? 30 : 10), 'text-anchor': 'middle', 'font-size': 12, fill: i === 0 ? 'var(--text)' : 'var(--muted)', 'font-weight': i === 0 ? 600 : 400 }, xLabel ? xLabel(r, i) : i === 0 ? 'Now' : fmtHour(r.t, tz))));
   // series
   const bars = series.filter(s => s.kind === 'bar'), nb = bars.length;
   series.forEach(s => {
@@ -426,7 +439,7 @@ function chart({ rows, tz, series, yFmt, yMin, yMax, height = 250, arrows, ticks
     const i = Math.max(0, Math.min(n - 1, Math.floor((px - pad.l) / band)));
     cross.setAttribute('x1', xc(i)); cross.setAttribute('x2', xc(i)); cross.setAttribute('visibility', 'visible');
     tip.innerHTML = '';
-    tip.append(el('b', {}, i === 0 ? 'Now' : fmtDT(rows[i].t, tz)));
+    tip.append(el('b', {}, tipLabel ? tipLabel(rows[i], i) : i === 0 ? 'Now' : fmtDT(rows[i].t, tz)));
     series.forEach(s => { const v = s.values[i]; tip.append(el('div', { class: 'r' }, el('span', {}, el('i', { style: `background:${s.color}` }), s.name), el('span', {}, v == null ? '–' : (s.fmt || yFmt)(v)))); });
     if (rows[i].cond) tip.append(el('div', { style: 'opacity:.75;margin-top:3px' }, rows[i].cond));
     tip.hidden = false;
@@ -453,7 +466,7 @@ function render() {
   if (state.error) { $('#now').append(el('div', { class: 'err' }, state.error)); renderFooter(); return; }
   if (!d) { $('#now').append(el('div', { class: 'skel' })); return; }
   renderBanner(d); renderNow(d); renderTabs(d);
-  const fn = { overview: viewOverview, map: viewMap, temperature: viewTemp, rain: viewRain, clouds: viewClouds, wind: viewWind, storms: viewStorms, snow: viewSnow, fire: viewFire, alerts: viewAlerts, table: viewTable }[state.view];
+  const fn = { overview: viewOverview, map: viewMap, tenday: viewTenDay, temperature: viewTemp, rain: viewRain, clouds: viewClouds, wind: viewWind, storms: viewStorms, snow: viewSnow, fire: viewFire, alerts: viewAlerts, table: viewTable }[state.view];
   $('#view').append(...[].concat(fn(d)).filter(Boolean));
   renderFooter(d);
 }
@@ -739,6 +752,70 @@ function viewTable(d) {
   const tbl = el('table', { class: 'data' }, el('thead', {}, el('tr', {}, cols.map(c => el('th', {}, c[0])))), el('tbody', {}, R.map(r => el('tr', { class: r.night ? 'night' : '' }, cols.map(c => el('td', {}, c[1](r)))))));
   const csv = () => { const lines = [cols.map(c => c[0]).join(',')]; R.forEach(r => lines.push(cols.map(c => `"${String(c[1](r)).replace(/"/g, '""')}"`).join(','))); const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' })); a.download = 'weather-next-12h.csv'; a.click(); };
   return [section('Hourly data', el('p', { class: 'lede' }, 'Every value shown in the charts, one row per hour. Night rows are shaded.'), el('div', { class: 'chartwrap' }, tbl), el('p', {}, el('button', { class: 'btn', onclick: csv }, 'Download CSV')))];
+}
+
+
+// ---------- 10-day forecast ----------
+const WMO = { 0: ['Clear', '☀️'], 1: ['Mainly clear', '🌤️'], 2: ['Partly cloudy', '⛅'], 3: ['Overcast', '☁️'], 45: ['Fog', '🌫️'], 48: ['Freezing fog', '🌫️'], 51: ['Light drizzle', '🌦️'], 53: ['Drizzle', '🌦️'], 55: ['Heavy drizzle', '🌧️'], 56: ['Freezing drizzle', '🌧️'], 57: ['Freezing drizzle', '🌧️'], 61: ['Light rain', '🌧️'], 63: ['Rain', '🌧️'], 65: ['Heavy rain', '🌧️'], 66: ['Freezing rain', '🌧️'], 67: ['Freezing rain', '🌧️'], 71: ['Light snow', '🌨️'], 73: ['Snow', '🌨️'], 75: ['Heavy snow', '❄️'], 77: ['Snow grains', '🌨️'], 80: ['Rain showers', '🌦️'], 81: ['Rain showers', '🌦️'], 82: ['Heavy showers', '🌧️'], 85: ['Snow showers', '🌨️'], 86: ['Snow showers', '🌨️'], 95: ['Thunderstorms', '⛈️'], 96: ['Thunderstorms with hail', '⛈️'], 99: ['Thunderstorms with hail', '⛈️'] };
+function buildDaily(nwsFc, om, tz) {
+  const days = new Map();
+  if (om && om.daily && om.daily.time) om.daily.time.forEach((date, i) => {
+    const g = k => om.daily[k] ? om.daily[k][i] : null;
+    days.set(date, { date, code: g('weather_code'), hi: g('temperature_2m_max'), lo: g('temperature_2m_min'), feelsHi: g('apparent_temperature_max'), feelsLo: g('apparent_temperature_min'), precip: g('precipitation_sum'), snow: g('snowfall_sum') == null ? null : g('snowfall_sum') * 10, pop: g('precipitation_probability_max'), wind: g('wind_speed_10m_max'), gust: g('wind_gusts_10m_max'), wdir: g('wind_direction_10m_dominant'), uv: g('uv_index_max'), sunrise: g('sunrise'), sunset: g('sunset'), om: true });
+  });
+  if (nwsFc && nwsFc.periods) nwsFc.periods.forEach(per => {
+    const k = per.startTime.slice(0, 10);
+    if (!days.has(k)) days.set(k, { date: k });
+    const d = days.get(k); d.nws = true;
+    const tC = per.temperatureUnit === 'F' ? (per.temperature - 32) * 5 / 9 : per.temperature;
+    if (per.isDaytime) { d.day = per; d.nwsHi = tC; } else { d.night = per; d.nwsLo = tC; }
+  });
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: tz });
+  return [...days.values()].filter(d => d.date >= today || d.nws).sort((a, b) => a.date.localeCompare(b.date)).slice(0, 10);
+}
+const dayDate = date => { const [y, m, d] = date.split('-').map(Number); return Date.UTC(y, m - 1, d, 12); };
+const dayName = (date, i) => i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : new Intl.DateTimeFormat('en-US', { weekday: 'long', timeZone: 'UTC' }).format(new Date(dayDate(date)));
+const dayShort = date => new Intl.DateTimeFormat('en-US', { weekday: 'short', timeZone: 'UTC' }).format(new Date(dayDate(date)));
+const dayMD = date => new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }).format(new Date(dayDate(date)));
+function viewTenDay(d) {
+  const D = d.daily || [];
+  if (!D.length) return [section('10-day forecast', el('p', { class: 'empty' }, 'No daily forecast is available for this point.'))];
+  const hi = x => x.nwsHi ?? x.hi, lo = x => x.nwsLo ?? x.lo;
+  const pop = x => Math.max(x.pop ?? -1, x.day && x.day.probabilityOfPrecipitation ? x.day.probabilityOfPrecipitation.value ?? -1 : -1, x.night && x.night.probabilityOfPrecipitation ? x.night.probabilityOfPrecipitation.value ?? -1 : -1);
+  const text = x => (x.day && x.day.shortForecast) || (x.night && x.night.shortForecast) || (WMO[x.code] || ['–'])[0];
+  const rows = D.map((x, i) => ({ t: dayDate(x.date), i, night: false, cond: text(x) }));
+  const xl = (r, i) => dayShort(D[i].date), tl = (r, i) => `${dayName(D[i].date, i)}, ${dayMD(D[i].date)}`;
+  const his = D.map(hi).filter(v => v != null), los = D.map(lo).filter(v => v != null);
+  const wet = D.filter(x => pop(x) >= 40);
+  const cards = D.map((x, i) => {
+    const per = x.day || x.night, p = pop(x);
+    const icon = per && per.icon ? el('img', { src: per.icon.replace(/size=\w+/, 'size=medium'), alt: '' }) : el('div', { class: 'emo' }, (WMO[x.code] || ['', '🌡️'])[1]);
+    const wind = x.day && x.day.windSpeed ? `${x.day.windDirection} ${x.day.windSpeed.replace(' to ', '–')}` : x.wind != null ? `${dirName(x.wdir)} ${fmtSpd(x.wind)}` : null;
+    return el('article', { class: 'day' },
+      el('div', { class: 'dn' }, dayName(x.date, i), el('small', {}, dayMD(x.date))),
+      el('div', { class: 'ic' }, icon, el('div', { class: 'hl' }, fmtT(hi(x)), ' ', el('small', {}, `/ ${fmtT(lo(x))}`))),
+      el('div', { class: 'tx' }, text(x)),
+      el('div', { class: 'mt' }, p >= 0 ? el('span', { style: 'color:var(--s-blue)' }, `💧 ${Math.round(p)}%`) : null, wind ? el('span', {}, `💨 ${wind}`) : null, x.snow > 0 ? el('span', {}, `❄️ ${fmtLen(x.snow)}`) : null, x.uv != null ? el('span', {}, `UV ${Math.round(x.uv)}`) : null),
+      (x.day || x.night || x.om) ? el('details', {}, el('summary', {}, 'Details'),
+        x.day ? el('p', {}, el('b', {}, `${x.day.name}: `), x.day.detailedForecast) : null,
+        x.night ? el('p', {}, el('b', {}, `${x.night.name}: `), x.night.detailedForecast) : null,
+        x.om ? el('p', {}, `Model guidance: high ${fmtT(x.hi)}, low ${fmtT(x.lo)}, feels like ${fmtT(x.feelsHi)} / ${fmtT(x.feelsLo)}, precipitation ${fmtLen(x.precip)}, gusts to ${fmtSpd(x.gust)}${x.sunrise ? `, sunrise ${x.sunrise.slice(11)} · sunset ${x.sunset.slice(11)}` : ''}.`) : null) : null,
+      el('div', { class: 'src' }, x.nws ? 'NWS forecast' : 'Open-Meteo model'));
+  });
+  return [
+    section('10-day forecast', el('p', { class: 'lede' }, `Highs ${his.length ? `${fmtT(Math.min(...his))} to ${fmtT(Math.max(...his))}` : '–'}, lows ${los.length ? `${fmtT(Math.min(...los))} to ${fmtT(Math.max(...los))}` : '–'}. ${wet.length ? `Best chance of precipitation ${wet.map((x) => dayName(x.date, D.indexOf(x)).toLowerCase()).slice(0, 3).join(', ')}.` : 'No day reaches a 40% chance of precipitation.'}`),
+      el('div', { class: 'days', 'data-container': 'Day cards' }, cards),
+      el('p', { class: 'note', style: 'margin-top:10px' }, 'The National Weather Service publishes seven days of forecast text, icons and temperatures; those cards are marked NWS. Days beyond that, and every value in the charts below, come from Open-Meteo model guidance (GFS/ECMWF blend), which updates hourly.')),
+    section('Highs and lows', chart({ rows, tz: d.tz, yFmt: v => `${Math.round(v)}°`, xLabel: xl, tipLabel: tl, series: [
+      { name: 'High', color: C('orange'), values: D.map(x => valT(x.hi ?? x.nwsHi)) },
+      { name: 'Low', color: C('blue'), values: D.map(x => valT(x.lo ?? x.nwsLo)) }] })),
+    section('Precipitation', el('div', { class: 'grid2' },
+      chart({ rows, tz: d.tz, yFmt: v => `${Math.round(v)}%`, yMin: 0, yMax: 100, xLabel: xl, tipLabel: tl, series: [{ name: 'Chance of precipitation', color: C('blue'), kind: 'bar', values: D.map(x => x.pop) }], height: 210 }),
+      chart({ rows, tz: d.tz, yFmt: v => US() ? `${v.toFixed(2)}"` : `${v.toFixed(1)}mm`, yMin: 0, xLabel: xl, tipLabel: tl, series: [{ name: 'Precipitation total', color: C('blue'), kind: 'bar', values: D.map(x => valLen(x.precip)) }, { name: 'Snow', color: C('violet'), kind: 'bar', values: D.map(x => valLen(x.snow)) }], height: 210 }))),
+    section('Wind', chart({ rows, tz: d.tz, yFmt: v => `${Math.round(v)}`, yMin: 0, xLabel: xl, tipLabel: tl, arrows: r => D[r.i].wdir, series: [
+      { name: `Max sustained (${US() ? 'mph' : 'km/h'})`, color: C('aqua'), values: D.map(x => valSpd(x.wind)) },
+      { name: 'Max gust', color: C('yellow'), dash: true, values: D.map(x => valSpd(x.gust)) }], height: 210 }))
+  ];
 }
 
 // ---------- map view (NOAA nowCOAST WMS + Leaflet) ----------
