@@ -12,6 +12,7 @@ Live: https://weather-now.exe.xyz
 | View | Data |
 |---|---|
 | Overview | Hourly strip with NWS icons, at-a-glance tiles, temperature and rain charts |
+| Map | Leaflet map with NOAA nowCOAST layers: radar loop, lightning density, GOES infrared clouds, forecast temperature, feels-like, rain chance, rain amount, snow, cloud cover, wind speed, gusts, wind barbs, humidity, and NWS alert polygons; time slider and play button; click for the value at a point or to load that point's forecast |
 | Temperature | Air, feels-like and dew point lines; heat index / wind chill; NWS HeatRisk; heat and cold alerts |
 | Rain | Probability of precipitation, liquid amount per hour, precipitation type and coverage, flood alerts |
 | Clouds & sky | Sky cover, relative humidity, visibility and ceiling where published, sunrise and sunset |
@@ -24,8 +25,10 @@ Live: https://weather-now.exe.xyz
 
 ## How it works
 
-`index.html` is the whole application: no build step, no dependencies, plain
-HTML, CSS and JavaScript with inline SVG charts.
+`index.html` is the whole application: no build step, plain HTML, CSS and
+JavaScript with inline SVG charts. The Map view loads Leaflet 1.9.4 from cdnjs
+on first use and draws NOAA nowCOAST WMS layers over OpenStreetMap tiles; time
+steps come from each layer's WMS capabilities document.
 
 1. `GET /points/{lat},{lon}` resolves the forecast office, grid cell, time zone,
    hourly forecast URL, observation stations and radar station.
@@ -42,9 +45,10 @@ HTML, CSS and JavaScript with inline SVG charts.
 5. Sunrise and sunset are computed locally (NOAA solar position formulas) to
    shade night hours on the charts.
 
-Location comes from the browser's geolocation API, a `?lat=&lon=&name=` query
-string, the search box (place names are resolved with Nominatim; `lat,lon`
-pairs are used directly), or the last location saved in `localStorage`.
+The default location is ZIP 07304 (Jersey City, NJ). A `?lat=&lon=&name=` query
+string overrides it, and so does a location chosen with the search box (place
+names are resolved with Nominatim; `lat,lon` pairs are used directly) or the
+📍 button, which is remembered in `localStorage`.
 The NWS only covers the United States and its territories.
 
 Not every forecast office publishes every layer. Views say so explicitly when a
