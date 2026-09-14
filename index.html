@@ -227,7 +227,7 @@ footer{margin-top:28px;font-size:13px;color:var(--muted);line-height:1.6}
 <script>
 'use strict';
 const API = 'https://api.weather.gov';
-const BUILD = '2026-09-14.5';
+const BUILD = '2026-09-14.6';
 const HOUR = 3600e3;
 const $ = s => document.querySelector(s);
 function el(tag, attrs = {}, ...kids) {
@@ -641,15 +641,6 @@ function viewOverview(d) {
       chart({ rows: R, tz, yFmt: v => `${Math.round(v)}%`, yMin: 0, yMax: 100, series: [{ name: 'Rain chance', color: C('blue'), kind: 'bar', values: R.map(r => r.probabilityOfPrecipitation) }], height: 220 }))),
     skySummary(d, cal),
     ...skyPanels(d, cal),
-    section('At a glance', el('div', { class: 'tiles' },
-      tile('Temperature', tr ? `${fmtT(tr[0])} – ${fmtT(tr[1])}` : '–', 'low – high'),
-      tile('Rain chance', pop ? `≤ ${fmtPct(pop[1])}` : '–', qpf > 0 ? `${fmtLen(qpf)} expected` : 'no measurable rain', pop && pop[1] >= 50),
-      tile('Cloud cover', sky ? `${fmtPct(sky[0])} – ${fmtPct(sky[1])}` : '–', skyWords(sky ? (sky[0] + sky[1]) / 2 : null)),
-      tile('Wind gusts', gust ? `≤ ${fmtSpd(gust[1])}` : '–', beaufort(gust ? gust[1] : null), gust && gust[1] >= 48),
-      tile('Thunder', th ? `≤ ${fmtPct(th[1])}` : (R.some(r => r.thunder) ? 'Mentioned' : 'None'), R.some(r => r.thunder) ? 'thunderstorms in forecast' : 'probability of thunder', (th && th[1] >= 15) || R.some(r => r.thunder)),
-      tile('Snow / ice', snow > 0 ? fmtLen(snow) : 'None', sum(R, 'iceAccumulation') > 0 ? `ice ${fmtLen(sum(R, 'iceAccumulation'))}` : 'no accumulation', snow > 0),
-      tile('Fire weather', fire.label, fire.detail, fire.level >= 1),
-      tile('Alerts', String(d.alerts.length), d.alerts.length ? d.alerts[0].event : 'none active', d.alerts.length > 0))),
     d.rows.some(r => r.weatherText) ? section('Forecast weather by hour', wordsRow(d, r => r.weatherText, 'Weather')) : null
   ];
 }
