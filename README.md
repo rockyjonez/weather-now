@@ -57,6 +57,15 @@ Not every forecast office publishes every layer. Views say so explicitly when a
 layer (for example Lightning Activity Level or the fire danger indices) is
 absent for the selected point rather than showing zeros.
 
+## Styling
+
+The look is a Doctor Who fan tribute: TARDIS-blue console panels, amber
+instrument light, a time-vortex backdrop, roundel-shaped tabs, a CSS-drawn
+police box in the header, and the Audiowide / Exo 2 typefaces from Google
+Fonts. The vortex (dark) theme is the default; the ◐ button switches to a
+daylight theme. No BBC assets are used and the page is not affiliated with
+the BBC.
+
 ## Run locally
 
 Any static file server works:
