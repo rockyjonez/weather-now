@@ -227,6 +227,7 @@ footer{margin-top:28px;font-size:13px;color:var(--muted);line-height:1.6}
 <script>
 'use strict';
 const API = 'https://api.weather.gov';
+const BUILD = '2026-09-14.3';
 const HOUR = 3600e3;
 const $ = s => document.querySelector(s);
 function el(tag, attrs = {}, ...kids) {
@@ -510,7 +511,8 @@ function render() {
   if (!d) { $('#now').append(el('div', { class: 'skel' }, 'Materialising…')); return; }
   renderBanner(d); renderNow(d); renderTabs(d);
   const fn = { overview: viewOverview, map: viewMap, tenday: viewTenDay, sky: viewSky, temperature: viewTemp, rain: viewRain, clouds: viewClouds, wind: viewWind, storms: viewStorms, snow: viewSnow, fire: viewFire, alerts: viewAlerts, table: viewTable }[state.view];
-  $('#view').append(...[].concat(fn(d)).filter(Boolean));
+  try { $('#view').append(...[].concat(fn(d)).filter(Boolean)); }
+  catch (e) { console.error(e); $('#view').append(el('div', { class: 'err' }, `This view failed to render (${e.message}). The other tabs still work; please report this with the build number in the footer.`)); }
   renderFooter(d);
 }
 function renderHeader() {
@@ -591,7 +593,7 @@ function renderFooter(d) {
   f.append(el('div', {}, 'Data: ', el('a', { href: 'https://www.weather.gov/documentation/services-web-api', target: '_blank', rel: 'noopener' }, 'National Weather Service API'), d ? ` · forecast office ${d.pts.gridId} · grid updated ${fmtDT(Date.parse(d.grid.updateTime), d.tz)} · hourly values are sampled from the NWS gridded forecast; 6-hour precipitation and snow totals are spread evenly across their hours.` : ''));
   if (state.updated) f.append(el('div', {}, `Page refreshed ${new Date(state.updated).toLocaleTimeString()} · auto-refreshes every 10 minutes · night hours are shaded on charts.`));
   if (state.geoNote) f.append(el('div', {}, state.geoNote));
-  f.append(el('div', {}, el('a', { href: 'https://github.com/rockyjonez/weather-now', target: '_blank', rel: 'noopener' }, 'Source on GitHub'), ' · Styling is a fan tribute to a certain blue box; not affiliated with the BBC.'));
+  f.append(el('div', {}, el('a', { href: 'https://github.com/rockyjonez/weather-now', target: '_blank', rel: 'noopener' }, 'Source on GitHub'), ' · Styling is a fan tribute to a certain blue box; not affiliated with the BBC.', ` · build ${BUILD}`));
 }
 
 // ---------- shared pieces ----------
