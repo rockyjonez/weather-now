@@ -227,7 +227,7 @@ footer{margin-top:28px;font-size:13px;color:var(--muted);line-height:1.6}
 <script>
 'use strict';
 const API = 'https://api.weather.gov';
-const BUILD = '2026-09-14.3';
+const BUILD = '2026-09-14.4';
 const HOUR = 3600e3;
 const $ = s => document.querySelector(s);
 function el(tag, attrs = {}, ...kids) {
@@ -633,8 +633,14 @@ function viewOverview(d) {
     el('div', { class: 'tp' }, fmtT(r.temperature)),
     el('div', { class: 'pp' }, r.probabilityOfPrecipitation ? `💧 ${fmtPct(r.probabilityOfPrecipitation)}` : ' '),
     el('div', { class: 'wd' }, `${dirName(r.windDirection)} ${r.windSpeed == null ? '' : Math.round(valSpd(r.windSpeed))}`))));
+  const cal = skyCalendar(state.lat, state.lon, tz);
   return [
     section('Next 12 hours', strip),
+    section('Temperature and rain', el('div', { class: 'grid2' },
+      chart({ rows: R, tz, yFmt: v => `${Math.round(v)}°`, series: [{ name: 'Temperature', color: C('orange'), values: R.map(r => valT(r.temperature)) }, { name: 'Feels like', color: C('magenta'), dash: true, values: R.map(r => valT(r.apparentTemperature)) }], height: 220 }),
+      chart({ rows: R, tz, yFmt: v => `${Math.round(v)}%`, yMin: 0, yMax: 100, series: [{ name: 'Rain chance', color: C('blue'), kind: 'bar', values: R.map(r => r.probabilityOfPrecipitation) }], height: 220 }))),
+    skySummary(d, cal),
+    ...skyPanels(d, cal),
     section('At a glance', el('div', { class: 'tiles' },
       tile('Temperature', tr ? `${fmtT(tr[0])} – ${fmtT(tr[1])}` : '–', 'low – high'),
       tile('Rain chance', pop ? `≤ ${fmtPct(pop[1])}` : '–', qpf > 0 ? `${fmtLen(qpf)} expected` : 'no measurable rain', pop && pop[1] >= 50),
@@ -644,9 +650,6 @@ function viewOverview(d) {
       tile('Snow / ice', snow > 0 ? fmtLen(snow) : 'None', sum(R, 'iceAccumulation') > 0 ? `ice ${fmtLen(sum(R, 'iceAccumulation'))}` : 'no accumulation', snow > 0),
       tile('Fire weather', fire.label, fire.detail, fire.level >= 1),
       tile('Alerts', String(d.alerts.length), d.alerts.length ? d.alerts[0].event : 'none active', d.alerts.length > 0))),
-    section('Temperature and rain', el('div', { class: 'grid2' },
-      chart({ rows: R, tz, yFmt: v => `${Math.round(v)}°`, series: [{ name: 'Temperature', color: C('orange'), values: R.map(r => valT(r.temperature)) }, { name: 'Feels like', color: C('magenta'), dash: true, values: R.map(r => valT(r.apparentTemperature)) }], height: 220 }),
-      chart({ rows: R, tz, yFmt: v => `${Math.round(v)}%`, yMin: 0, yMax: 100, series: [{ name: 'Rain chance', color: C('blue'), kind: 'bar', values: R.map(r => r.probabilityOfPrecipitation) }], height: 220 }))),
     d.rows.some(r => r.weatherText) ? section('Forecast weather by hour', wordsRow(d, r => r.weatherText, 'Weather')) : null
   ];
 }
@@ -978,7 +981,8 @@ function skyCalendar(lat, lon, tz) {
       pl.forEach(p => { const sep = angSep(m, p.c) * DEG; if (sep < 5 && altAz(p.c.ra, p.c.dec, d, lat, lon).alt > 0) events.push({ kind: 'conj', name: `Moon near ${p.n}`, note: `${sep.toFixed(1)}° apart in the ${when} sky`, emoji: '🌙' }); });
       for (let a = 0; a < pl.length; a++) for (let b = a + 1; b < pl.length; b++) { const sep = angSep(pl[a].c, pl[b].c) * DEG; if (sep < 2.5 && altAz(pl[a].c.ra, pl[a].c.dec, d, lat, lon).alt > 0) events.push({ kind: 'conj', name: `${pl[a].n} near ${pl[b].n}`, note: `${sep.toFixed(1)}° apart in the ${when} sky`, emoji: '✨' }); }
     });
-    days.push({ i, date, t0, sun, moon, ill, phase: phaseName(ill.phase), evening, morning, eveningPlanets: evening ? planetsUp(evening, lat, lon) : [], morningPlanets: morning ? planetsUp(morning, lat, lon) : [], moonUpEvening: moonEve != null && moonEve > 0, events });
+    const dusk = sun ? crossing(sun.sunset, sun.sunset + 3 * HOUR, t => sunAlt(t, lat, lon), -6 * rad) : null;
+    days.push({ i, date, t0, sun, moon, ill, dusk, phase: phaseName(ill.phase), evening, morning, eveningPlanets: evening ? planetsUp(evening, lat, lon) : [], morningPlanets: morning ? planetsUp(morning, lat, lon) : [], moonUpEvening: moonEve != null && moonEve > 0, events });
   }
   const from = days[0].t0, to = days[9].t0 + dayMs;
   const dated = [...phaseEvents(from, to), ...seasonEvents(from, to)];
@@ -1014,39 +1018,65 @@ function computePasses(satrec, lat, lon, from, to, onDone) {
 }
 const compass8 = az => ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(((az * DEG) % 360) / 45) % 8];
 function nightPolygon(t) { const d = jdays(t), s = sunCoords(d), sunLon = (((s.ra - sidereal(d, 0)) * DEG % 360) + 540) % 360 - 180, pts = []; for (let lon = -180; lon <= 180; lon += 3) pts.push([Math.atan(-Math.cos(rad * (lon - sunLon)) / Math.tan(s.dec)) * DEG, lon]); const pole = s.dec > 0 ? -89.9 : 89.9; pts.push([pole, 180], [pole, -180]); return pts; }
-function viewSky(d) {
+function crossing(t0, t1, fn, target) { // first time in [t0,t1] where fn crosses target downward (minute steps, then bisect)
+  let prev = fn(t0); for (let t = t0 + 60e3; t <= t1; t += 60e3) { const v = fn(t); if ((prev - target) * (v - target) <= 0) { let lo = t - 60e3, hi = t; for (let i = 0; i < 12; i++) { const m = (lo + hi) / 2; if ((fn(lo) - target) * (fn(m) - target) <= 0) hi = m; else lo = m; } return (lo + hi) / 2; } prev = v; } return null;
+}
+const planetLine = list => list.length ? list.map(p => `${PLANET_EMOJI[p.name]} ${p.name} (${compass8(p.az * rad)}, ${Math.round(p.alt)}° up)`).join(' · ') : 'none above the horizon';
+function nextVisiblePass() { const now = Date.now(); let best = null; SATS.filter(s => s.pass).forEach(s => (skyState.passes[s.id] || []).forEach(p => { if (p.visible && p.visEnd > now && (!best || p.visStart < best.visStart)) best = { ...p, sat: s }; })); return best; }
+function nextPassText(d) { const p = nextVisiblePass(); if (p) return [`${p.sat.emoji} ${p.sat.name} ${fmtDT(p.visStart, d.tz)}`, `${compass8(p.startAz)} → ${compass8(p.endAz)}, up to ${Math.round(p.visMax[1].el * DEG)}°`]; const pending = SATS.some(s => s.pass && skyState.passes[s.id] == null); return [pending ? 'computing…' : 'none in 10 days', pending ? 'ISS, Tiangong, Hubble' : 'above 10°, naked eye']; }
+function skySummary(d, cal) {
+  const tz = d.tz, today = cal.days[0];
+  const np = nextPassText(d);
+  return section('Tonight’s sky', el('div', { class: 'tiles' },
+    tile('Moon', `${today.phase[2]} ${Math.round(today.ill.fraction * 100)}%`, today.phase[1]),
+    tile('Moonrise', today.moon.rise ? fmtTime(today.moon.rise, tz) : today.moon.alwaysUp ? 'up all day' : '–', today.moon.set ? `sets ${fmtTime(today.moon.set, tz)}` : today.moon.alwaysDown ? 'below horizon' : null),
+    tile('Sunset', today.sun ? fmtTime(today.sun.sunset, tz) : '–', today.sun ? `dark by ${fmtTime(today.dusk || today.sun.sunset + 75 * 60e3, tz)}` : null),
+    tile('Sunrise', today.sun ? fmtTime(today.sun.sunrise, tz) : '–', today.sun ? `day length ${((today.sun.sunset - today.sun.sunrise) / HOUR).toFixed(1)} h` : null),
+    el('div', { class: 'tile', id: 'nextPass' }, el('div', { class: 'k' }, 'Next visible pass'), el('div', { class: 'v', style: 'font-size:16px' }, np[0]), el('div', { class: 's' }, np[1]))),
+    el('div', { class: 'words', style: 'margin-top:10px' },
+      el('div', {}, el('b', {}, 'Evening planets'), planetLine(today.eveningPlanets), el('div', { class: 'note' }, today.evening ? `about ${fmtTime(today.evening, tz)}` : '')),
+      el('div', {}, el('b', {}, 'Morning planets'), planetLine(today.morningPlanets), el('div', { class: 'note' }, today.morning ? `about ${fmtTime(today.morning, tz)}` : '')),
+      el('div', {}, el('b', {}, 'Events today'), today.events.length ? today.events.map(e => el('div', {}, `${e.emoji} ${e.name}`, el('span', { class: 'note' }, ` · ${e.note}`))) : 'nothing notable')));
+}
+function updateNextPass(d) { const t = document.getElementById('nextPass'); if (!t) return; const np = nextPassText(d); t.querySelector('.v').textContent = np[0]; t.querySelector('.s').textContent = np[1]; }
+function skyPanels(d, cal) {
   const tz = d.tz, lat = state.lat, lon = state.lon;
   const gen = ++skyState.gen; if (skyState.timer) { clearInterval(skyState.timer); skyState.timer = null; }
   const mapHost = el('div', { class: 'map skymap', id: 'skymap' });
   const satTable = el('div', { class: 'chartwrap' }, el('p', { class: 'note' }, 'Loading orbital elements…'));
   const passBox = el('div', {}, el('p', { class: 'note' }, 'Loading orbital elements…'));
-  const cal = skyCalendar(lat, lon, tz);
-  const today = cal.days[0];
-  const planetWords = list => list.length ? list.map(p => `${PLANET_EMOJI[p.name]} ${p.name} (${compass8(p.az * rad)}, ${Math.round(p.alt)}° up)`).join(' · ') : 'none above the horizon';
-  const tonight = section('Tonight’s sky', el('div', { class: 'tiles' },
-    tile('Moon', `${today.phase[2]} ${Math.round(today.ill.fraction * 100)}%`, today.phase[1]),
-    tile('Moonrise', today.moon.rise ? fmtTime(today.moon.rise, tz) : today.moon.alwaysUp ? 'up all day' : '–', today.moon.set ? `sets ${fmtTime(today.moon.set, tz)}` : today.moon.alwaysDown ? 'below horizon' : null),
-    tile('Sunset', today.sun ? fmtTime(today.sun.sunset, tz) : '–', today.sun ? `dark enough by ${fmtTime(today.sun.sunset + 75 * 60e3, tz)}` : null),
-    tile('Sunrise', today.sun ? fmtTime(today.sun.sunrise, tz) : '–', today.sun ? `day length ${((today.sun.sunset - today.sun.sunrise) / HOUR).toFixed(1)} h` : null)),
-    el('div', { class: 'words', style: 'margin-top:10px' },
-      el('div', {}, el('b', {}, 'Evening planets'), planetWords(today.eveningPlanets), el('div', { class: 'note' }, today.evening ? `about ${fmtTime(today.evening, tz)}` : '')),
-      el('div', {}, el('b', {}, 'Morning planets'), planetWords(today.morningPlanets), el('div', { class: 'note' }, today.morning ? `about ${fmtTime(today.morning, tz)}` : '')),
-      el('div', {}, el('b', {}, 'Events today'), today.events.length ? today.events.map(e => el('div', {}, `${e.emoji} ${e.name}`, el('span', { class: 'note' }, ` · ${e.note}`))) : 'nothing notable')));
-  const calRows = cal.days.map(dy => el('tr', {},
-    el('td', {}, el('b', {}, dayName(dy.date, dy.i)), el('div', { class: 'note' }, dayMD(dy.date))),
-    el('td', {}, dy.sun ? `${fmtTime(dy.sun.sunrise, tz)} / ${fmtTime(dy.sun.sunset, tz)}` : '–'),
-    el('td', {}, dy.moon.rise ? fmtTime(dy.moon.rise, tz) : '–', ' / ', dy.moon.set ? fmtTime(dy.moon.set, tz) : '–'),
-    el('td', {}, `${dy.phase[2]} ${Math.round(dy.ill.fraction * 100)}%`),
-    el('td', { style: 'white-space:normal;min-width:180px' }, dy.eveningPlanets.length ? dy.eveningPlanets.map(p => `${p.name} ${compass8(p.az * rad)}`).join(', ') : el('span', { class: 'empty' }, 'none')),
-    el('td', { style: 'white-space:normal;min-width:180px' }, dy.morningPlanets.length ? dy.morningPlanets.map(p => `${p.name} ${compass8(p.az * rad)}`).join(', ') : el('span', { class: 'empty' }, 'none')),
-    el('td', { style: 'white-space:normal;min-width:220px' }, dy.events.length ? dy.events.map(e => el('div', {}, `${e.emoji} ${e.name}`, el('div', { class: 'note' }, e.note))) : el('span', { class: 'empty' }, '–'))));
-  const calendar = section('Sky calendar, next 10 days', el('p', { class: 'lede' }, 'Sun and moon times, moon phase, planets above 8° about 75 minutes after sunset and before sunrise, and notable events. All times local to the location.'),
-    el('div', { class: 'chartwrap' }, el('table', { class: 'data' }, el('thead', {}, el('tr', {}, ['Day', 'Sunrise / sunset', 'Moonrise / set', 'Moon', 'Evening planets', 'Morning planets', 'Events'].map(h => el('th', { style: 'text-align:left' }, h)))), el('tbody', {}, calRows))),
-    el('p', { class: 'note', style: 'margin-top:8px' }, 'Positions are computed in the page from standard low-precision formulas (accurate to a fraction of a degree). Meteor shower dates are the usual annual peaks; eclipse dates are from the published 2026–2028 canon. Satellite passes below use current CelesTrak orbital elements.'));
-  const satSec = section('Satellites over Earth now', el('p', { class: 'lede' }, 'Live positions from current orbital elements, updated every two seconds. The shaded area is night; the circle is the selected satellite’s horizon footprint. Click a row to track that satellite.'),
-    mapHost, satTable);
+  const th = names => el('thead', {}, el('tr', {}, names.map(h => el('th', { style: 'text-align:left' }, h))));
+  const dayCell = dy => el('td', {}, el('b', {}, dayName(dy.date, dy.i)), el('div', { class: 'note' }, dayMD(dy.date)));
+  // Satellites
+  const satSec = section('Satellites over Earth now', el('p', { class: 'lede' }, 'Live positions from current orbital elements, updated every two seconds. The shaded area is night; the circle is the selected satellite’s horizon footprint. Click a row to track that satellite.'), mapHost, satTable);
+  // Passes
   const passSec = section(`Passes over ${state.label || 'this location'}, next 10 days`, el('p', { class: 'lede' }, 'A pass is visible to the naked eye when the sky is dark where you stand and the satellite is still lit by the sun. The ISS is the brightest; Tiangong and Hubble are fainter.'),
     el('div', { class: 'mapctl' }, el('label', { class: 'chk' }, el('input', { type: 'checkbox', checked: skyState.visibleOnly || null, onchange: e => { skyState.visibleOnly = e.target.checked; renderPasses(); } }), 'Visible passes only')), passBox);
+  // Moon & Sun
+  const moonSec = section('Moon and Sun, next 10 days', el('p', { class: 'lede' }, 'Rise and set times, the end of civil twilight (dark enough for bright planets and satellites), and the moon’s phase.'),
+    el('div', { class: 'chartwrap' }, el('table', { class: 'data narrow' }, th(['Day', 'Sunrise', 'Sunset', 'Dark by', 'Daylight', 'Moonrise', 'Moonset', 'Moon']),
+      el('tbody', {}, cal.days.map(dy => el('tr', {}, dayCell(dy), el('td', {}, dy.sun ? fmtTime(dy.sun.sunrise, tz) : '–'), el('td', {}, dy.sun ? fmtTime(dy.sun.sunset, tz) : '–'), el('td', {}, dy.dusk ? fmtTime(dy.dusk, tz) : '–'), el('td', {}, dy.sun ? `${((dy.sun.sunset - dy.sun.sunrise) / HOUR).toFixed(1)} h` : '–'), el('td', {}, dy.moon.rise ? fmtTime(dy.moon.rise, tz) : dy.moon.alwaysUp ? 'up' : '–'), el('td', {}, dy.moon.set ? fmtTime(dy.moon.set, tz) : dy.moon.alwaysDown ? 'down' : '–'), el('td', {}, `${dy.phase[2]} ${Math.round(dy.ill.fraction * 100)}% · ${dy.phase[1]}`)))))),
+    el('div', { style: 'margin-top:10px' }, el('h3', {}, 'Phase events'), (() => { const ev = cal.days.flatMap(dy => dy.events.filter(e => e.kind === 'moon').map(e => ({ ...e, dy }))); return ev.length ? el('div', { class: 'words' }, ev.map(e => el('div', {}, el('b', {}, `${dayName(e.dy.date, e.dy.i)} ${dayMD(e.dy.date)}`), `${e.emoji} ${e.name}`, el('div', { class: 'note' }, e.note)))) : el('p', { class: 'empty' }, 'No new moon, quarter or full moon in the next 10 days.'); })()));
+  // Planets
+  const nowUp = planetsUp(Date.now(), lat, lon, 0), sunUpNow = sunAlt(Date.now(), lat, lon) > 0;
+  const planetSec = section('Planets, next 10 days', el('p', { class: 'lede' }, `Right now: ${nowUp.length ? planetLine(nowUp) : 'no planets above the horizon'}${sunUpNow && nowUp.length ? ' (daylight; not visible)' : ''}.`),
+    el('div', { class: 'chartwrap' }, el('table', { class: 'data narrow' }, th(['Day', 'Evening (75 min after sunset)', 'Morning (75 min before sunrise)']),
+      el('tbody', {}, cal.days.map(dy => el('tr', {}, dayCell(dy), el('td', { style: 'white-space:normal;min-width:260px' }, dy.eveningPlanets.length ? dy.eveningPlanets.map(p => el('div', {}, `${PLANET_EMOJI[p.name]} ${p.name} — ${compass8(p.az * rad)}, ${Math.round(p.alt)}° up`)) : el('span', { class: 'empty' }, 'none')), el('td', { style: 'white-space:normal;min-width:260px' }, dy.morningPlanets.length ? dy.morningPlanets.map(p => el('div', {}, `${PLANET_EMOJI[p.name]} ${p.name} — ${compass8(p.az * rad)}, ${Math.round(p.alt)}° up`)) : el('span', { class: 'empty' }, 'none'))))))),
+    el('p', { class: 'note', style: 'margin-top:8px' }, 'Mercury, Venus, Mars, Jupiter and Saturn, listed when at least 8° above the horizon and well clear of the sun. Uranus and Neptune need binoculars and are not listed.'));
+  // Events
+  const allEv = cal.days.flatMap(dy => dy.events.map(e => ({ ...e, dy })));
+  const eventSec = section('Sky events, next 10 days', el('p', { class: 'lede' }, allEv.length ? `${allEv.length} event${allEv.length > 1 ? 's' : ''} in the window.` : 'A quiet stretch: no phase events, showers, eclipses or close conjunctions.'),
+    allEv.length ? el('div', { class: 'words' }, allEv.map(e => el('div', {}, el('b', {}, `${dayName(e.dy.date, e.dy.i)} ${dayMD(e.dy.date)}`), `${e.emoji} ${e.name}`, el('div', { class: 'note' }, e.note)))) : null,
+    el('div', { style: 'margin-top:12px' }, el('h3', {}, 'Coming up later'), el('div', { class: 'words' },
+      SHOWERS.map(([n, , , peak, zhr]) => { const y = new Date().getUTCFullYear(); const dt = `${y}-${peak}` < cal.days[0].date ? `${y + 1}-${peak}` : `${y}-${peak}`; return { n, dt, zhr }; }).sort((a, b) => a.dt.localeCompare(b.dt)).slice(0, 3).map(x => el('div', {}, el('b', {}, dayMD(x.dt)), `☄️ ${x.n} peak`, el('div', { class: 'note' }, `up to ${x.zhr}/h`))),
+      ECLIPSES.filter(e => e[0] > cal.days[9].date).slice(0, 2).map(e => el('div', {}, el('b', {}, `${dayMD(e[0])} ${e[0].slice(0, 4)}`), `${e[1].includes('solar') ? '🌞' : '🌘'} ${e[1]}`, el('div', { class: 'note' }, `visible from ${e[2]}`))))));
+  // Full calendar
+  const calendar = section('Full sky calendar, next 10 days', el('p', { class: 'lede' }, 'Everything in one table. All times local to the location.'),
+    el('div', { class: 'chartwrap' }, el('table', { class: 'data' }, th(['Day', 'Sunrise / sunset', 'Moonrise / set', 'Moon', 'Evening planets', 'Morning planets', 'Events']),
+      el('tbody', {}, cal.days.map(dy => el('tr', {}, dayCell(dy), el('td', {}, dy.sun ? `${fmtTime(dy.sun.sunrise, tz)} / ${fmtTime(dy.sun.sunset, tz)}` : '–'), el('td', {}, dy.moon.rise ? fmtTime(dy.moon.rise, tz) : '–', ' / ', dy.moon.set ? fmtTime(dy.moon.set, tz) : '–'), el('td', {}, `${dy.phase[2]} ${Math.round(dy.ill.fraction * 100)}%`),
+        el('td', { style: 'white-space:normal;min-width:180px' }, dy.eveningPlanets.length ? dy.eveningPlanets.map(p => `${p.name} ${compass8(p.az * rad)}`).join(', ') : el('span', { class: 'empty' }, 'none')), el('td', { style: 'white-space:normal;min-width:180px' }, dy.morningPlanets.length ? dy.morningPlanets.map(p => `${p.name} ${compass8(p.az * rad)}`).join(', ') : el('span', { class: 'empty' }, 'none')),
+        el('td', { style: 'white-space:normal;min-width:220px' }, dy.events.length ? dy.events.map(e => el('div', {}, `${e.emoji} ${e.name}`, el('div', { class: 'note' }, e.note))) : el('span', { class: 'empty' }, '–'))))))),
+    el('p', { class: 'note', style: 'margin-top:8px' }, 'Positions are computed in the page from standard low-precision formulas (accurate to a fraction of a degree). Meteor shower dates are the usual annual peaks; eclipse dates are from the published 2026–2028 canon. Satellite passes use current CelesTrak orbital elements.'));
   const renderPasses = () => {
     passBox.innerHTML = '';
     const all = []; SATS.filter(s => s.pass).forEach(s => (skyState.passes[s.id] || []).forEach(p => all.push({ ...p, sat: s })));
@@ -1055,8 +1085,7 @@ function viewSky(d) {
     if (pending.length) passBox.append(el('p', { class: 'note' }, `Computing passes for ${pending.map(s => s.name).join(', ')}…`));
     if (!list.length && !pending.length) { passBox.append(el('p', { class: 'empty' }, skyState.visibleOnly ? 'No naked-eye passes in the next 10 days. Untick the box to see daylight and shadowed passes.' : 'No passes above 10° in the next 10 days.')); return; }
     if (!list.length) return;
-    passBox.append(el('div', { class: 'chartwrap' }, el('table', { class: 'data narrow' },
-      el('thead', {}, el('tr', {}, ['Satellite', 'Date', 'Appears', 'Highest', 'Disappears', 'Max elevation', 'Duration', 'Visibility'].map(h => el('th', { style: 'text-align:left' }, h)))),
+    passBox.append(el('div', { class: 'chartwrap' }, el('table', { class: 'data narrow' }, th(['Satellite', 'Date', 'Appears', 'Highest', 'Disappears', 'Max elevation', 'Duration', 'Visibility']),
       el('tbody', {}, list.map(p => { const s = p.visible ? p.visStart : p.start, e = p.visible ? p.visEnd : p.end, mx = p.visible ? p.visMax[1] : p.max, mxT = p.visible ? p.visMax[0] : p.maxT;
         return el('tr', { class: p.visible ? '' : 'night' }, el('td', {}, `${p.sat.emoji} ${p.sat.name}`), el('td', {}, fmtDT(s, tz).split(' ')[0] + ' ' + dayMD(new Date(s).toLocaleDateString('en-CA', { timeZone: tz }))), el('td', {}, `${fmtTime(s, tz)} ${compass8(p.startAz)}`), el('td', {}, `${fmtTime(mxT, tz)} ${compass8(mx.az)}`), el('td', {}, `${fmtTime(e, tz)} ${compass8(p.endAz)}`), el('td', {}, `${Math.round(mx.el * DEG)}°`), el('td', {}, `${Math.round((e - s) / 60e3)} min`), el('td', {}, p.visible ? el('b', { style: 'color:var(--accent)' }, 'Naked eye') : (p.max.sunAlt > -6 * rad ? 'Daylight' : 'In Earth’s shadow'))); })))));
   };
@@ -1065,20 +1094,19 @@ function viewSky(d) {
     skyState.tles = tles;
     const recs = {}; SATS.forEach(s => { if (tles[s.id]) recs[s.id] = satellite.twoline2satrec(tles[s.id].l1, tles[s.id].l2); });
     if (!Object.keys(recs).length) { satTable.innerHTML = ''; satTable.append(el('p', { class: 'err' }, 'Could not load orbital elements from CelesTrak. Try again in a few minutes.')); passBox.innerHTML = ''; return; }
-    // map
     if (skyState.map) { try { skyState.map.remove(); } catch (e) { } }
     const dark = document.documentElement.getAttribute('data-theme') !== 'light';
     const map = L.map(mapHost, { worldCopyJump: true, minZoom: 1, maxZoom: 8, zoomControl: true, attributionControl: true }).setView([lat, lon], 2);
     skyState.map = map;
     map.createPane('base'); map.getPane('base').style.zIndex = 200; if (dark) map.getPane('base').style.filter = 'invert(1) hue-rotate(180deg) brightness(0.8) contrast(0.9) saturate(0.5)';
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, pane: 'base', attribution: '© OpenStreetMap contributors · orbits: CelesTrak' }).addTo(map);
-    let night = L.polygon(nightPolygon(Date.now()), { stroke: false, fillColor: '#000', fillOpacity: dark ? 0.45 : 0.25, interactive: false }).addTo(map);
+    const night = L.polygon(nightPolygon(Date.now()), { stroke: false, fillColor: '#000', fillOpacity: dark ? 0.45 : 0.25, interactive: false }).addTo(map);
     L.circleMarker([lat, lon], { radius: 6, color: '#fff', weight: 2, fillColor: '#f5b83d', fillOpacity: 1 }).addTo(map).bindTooltip(state.label || 'You');
     const markers = {}, obs = { longitude: rad * lon, latitude: rad * lat, height: 0.05 };
     SATS.forEach(s => { if (!recs[s.id]) return; markers[s.id] = L.marker([0, 0], { icon: L.divIcon({ className: 'satmark', html: `<span>${s.emoji}</span><i>${s.name}</i>`, iconSize: [90, 24], iconAnchor: [12, 12] }) }).addTo(map).on('click', () => { skyState.selected = s.id; tick(true); }); });
     let track = null, foot = null, lastNight = Date.now();
     const rowsEl = el('tbody');
-    satTable.innerHTML = ''; satTable.append(el('table', { class: 'data narrow' }, el('thead', {}, el('tr', {}, ['Satellite', 'Over', 'Altitude', 'Speed', 'From you', 'Next visible pass'].map(h => el('th', { style: 'text-align:left' }, h)))), rowsEl));
+    satTable.innerHTML = ''; satTable.append(el('table', { class: 'data narrow' }, th(['Satellite', 'Over', 'Altitude', 'Speed', 'From you', 'Next visible pass']), rowsEl));
     const tick = force => {
       if (gen !== skyState.gen) { clearInterval(skyState.timer); return; }
       const now = Date.now(); rowsEl.innerHTML = '';
@@ -1098,13 +1126,12 @@ function viewSky(d) {
     };
     tick(true); skyState.timer = setInterval(() => tick(false), 2000);
     setTimeout(() => { try { map.invalidateSize(); } catch (e) { } }, 50);
-    // passes
     const from = Date.now(), to = from + 10 * dayMs, locKey = `${lat.toFixed(3)},${lon.toFixed(3)}`;
     if (skyState.passKey !== locKey) { skyState.passes = {}; skyState.passKey = locKey; }
-    renderPasses();
-    SATS.filter(s => s.pass && recs[s.id] && skyState.passes[s.id] == null).forEach(s => computePasses(recs[s.id], lat, lon, from, to, ps => { if (gen !== skyState.gen) return; skyState.passes[s.id] = ps; renderPasses(); tick(true); }));
+    renderPasses(); updateNextPass(d);
+    SATS.filter(s => s.pass && recs[s.id] && skyState.passes[s.id] == null).forEach(s => computePasses(recs[s.id], lat, lon, from, to, ps => { if (gen !== skyState.gen) return; skyState.passes[s.id] = ps; renderPasses(); updateNextPass(d); tick(true); }));
   }).catch(e => { satTable.innerHTML = ''; satTable.append(el('p', { class: 'err' }, e.message)); passBox.innerHTML = ''; });
-  const subs = [['sats', 'Satellites over Earth', satSec], ['passes', `Passes over ${state.label || 'this location'}`, passSec], ['cal', 'Sky calendar', calendar]];
+  const subs = [['sats', 'Satellites over Earth', satSec], ['passes', `Passes over ${state.label || 'here'}`, passSec], ['moon', 'Moon & Sun', moonSec], ['planets', 'Planets', planetSec], ['events', 'Events', eventSec], ['cal', 'Full calendar', calendar]];
   if (!subs.some(x => x[0] === skyState.sub)) skyState.sub = 'sats';
   const subnav = el('nav', { class: 'tabs sub', role: 'tablist', 'aria-label': 'Sky views' });
   const showSub = key => {
@@ -1115,8 +1142,9 @@ function viewSky(d) {
   };
   subs.forEach(([k, name]) => subnav.append(el('button', { role: 'tab', 'aria-selected': k === skyState.sub, onclick: () => showSub(k) }, name)));
   subs.forEach(([k, , sec]) => { sec.hidden = k !== skyState.sub; });
-  return [tonight, subnav, ...subs.map(x => x[2])];
+  return [subnav, ...subs.map(x => x[2])];
 }
+function viewSky(d) { const cal = skyCalendar(state.lat, state.lon, d.tz); return [skySummary(d, cal), ...skyPanels(d, cal)]; }
 
 // ---------- map view (NOAA nowCOAST WMS + Leaflet) ----------
 const NOWCOAST = 'https://nowcoast.noaa.gov/geoserver';
