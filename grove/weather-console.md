@@ -411,12 +411,13 @@ html`<div class="wc"><div class="wc-eyebrow" style="margin:14px 2px 6px">Canvas 
   const show = await Button("3 · Show globe", async () => {
     if (!window.__wcGlobe) window.__wcGlobe = await gxr.createGlobe({ radius: 1, distance: 0.08, showLabels: false, showBorder: true, borderOpacity: 0.35, dayNightTransition: 0.5, neighborOffset: 0.12, neighborDistance: 0.04 });
     else window.__wcGlobe.show();
+    window.__wcGlobeOn = true;
     window.__wcGlobe.projectNodes();
     await gxr.sleep(300);
     await gxr.flyToCenter();
     gxr.toast().success("Globe on. Nodes with lat/lon are pinned to the surface.");
   });
-  const hide = await Button("Hide globe", async () => { if (window.__wcGlobe) window.__wcGlobe.hide(); gxr.nodes().pinned(false); gxr.forceLayout(); });
+  const hide = await Button("Hide globe", async () => { if (window.__wcGlobe) window.__wcGlobe.hide(); window.__wcGlobeOn = false; gxr.nodes().pinned(false); gxr.forceLayout(); });
   const day = Inputs.range([0, 1], { label: "Day ↔ night", value: 0.5, step: 0.05 });
   day.addEventListener("input", () => { if (window.__wcGlobe) window.__wcGlobe.setDayNightTransition(+day.value); });
   const wrap = html`<div class="wc"><div class="wc-row"></div></div>`;
@@ -441,7 +442,7 @@ viewof live = Inputs.toggle({label: "4 · Live satellite tracking", value: false
     const rows = sats.map(s => { const g = satmath.geo(s.satrec, now) || {}; const lk = satmath.look(s.satrec, loc.lat, loc.lon, now); return { id: s.id, name: s.name, emoji: s.emoji, lat: g.lat, lon: g.lon, altKm: g.altKm == null ? null : Math.round(g.altKm), speedKms: g.speedKms == null ? null : Math.round(g.speedKms * 100) / 100, up: lk && lk.el > 0, elev: lk ? Math.round(lk.el * satmath.DEG) : null, dir: lk ? astro.compass8(lk.az) : "" }; });
     try {
       await gxr.mergeNodes({ category: "Satellite", keys: ["id"], data: rows.map(r => { const s = sats.find(x => x.id === r.id); return { id: r.id, name: r.name, emoji: r.emoji, about: s ? s.about : "", lat: r.lat, lon: r.lon, altKm: r.altKm, speedKms: r.speedKms, aboveHorizon: !!r.up, elevation: r.elev, direction: r.dir }; }) });
-      if (window.__wcGlobe) window.__wcGlobe.projectNodes();
+      if (window.__wcGlobe && window.__wcGlobeOn) window.__wcGlobe.projectNodes();
     } catch (e) { }
     card.innerHTML = `<div class="wc-h">Satellites over Earth · live</div><table class="wc-table"><thead><tr><th>Satellite</th><th>Over</th><th>Altitude</th><th>Speed</th><th>From ${loc.label}</th></tr></thead><tbody>${rows.map(r => `<tr><td>${r.emoji} ${r.name}</td><td>${r.lat == null ? "–" : `${Math.abs(r.lat).toFixed(1)}°${r.lat >= 0 ? "N" : "S"} ${Math.abs(r.lon).toFixed(1)}°${r.lon >= 0 ? "E" : "W"}`}</td><td>${r.altKm ?? "–"} km</td><td>${r.speedKms ?? "–"} km/s</td><td class="${r.up ? "on" : ""}">${r.up ? `Above horizon · ${r.elev}° ${r.dir}` : "Below horizon"}</td></tr>`).join("")}</tbody></table><div class="wc-muted" style="margin-top:6px">Updated ${new Date().toLocaleTimeString()} · orbital elements from CelesTrak</div>`;
   };
@@ -456,7 +457,7 @@ viewof live = Inputs.toggle({label: "4 · Live satellite tracking", value: false
 ```js
 {
   const timeline = await Button("Timeline layout", async () => {
-    const g = window.__wcGlobe; if (g) g.hide(); gxr.nodes().pinned(false);
+    const g = window.__wcGlobe; if (g) g.hide(); window.__wcGlobeOn = false; gxr.nodes().pinned(false);
     const place = (n, p) => gxr.nodes().filter(x => x.id === n.id).position(p);
     const hours = gxr.nodes({ category: "Hour" }), temps = hours.map(n => +n.properties.tempF).filter(v => !isNaN(v)), tm = temps.length ? temps.reduce((a, b) => a + b, 0) / temps.length : 0;
     hours.forEach(n => place(n, { x: (+n.properties.hourIndex - 6) * 0.45, y: 1.2 + ((+n.properties.tempF || tm) - tm) * 0.06, z: 0 }));
@@ -466,7 +467,7 @@ viewof live = Inputs.toggle({label: "4 · Live satellite tracking", value: false
     ["Alert", "Planet", "SkyEvent", "Satellite", "Pass"].forEach((c, ci) => gxr.nodes({ category: c }).forEach((n, i) => place(n, { x: 3.4 + ci * 0.5, y: 2 - i * 0.28, z: 0 })));
     gxr.nodes().pinned(true); await gxr.sleep(600); await gxr.flyToCenter();
   });
-  const force = await Button("Force layout", async () => { if (window.__wcGlobe) window.__wcGlobe.hide(); gxr.nodes().pinned(false); gxr.forceLayout(); await gxr.sleep(1200); await gxr.flyToCenter(); });
+  const force = await Button("Force layout", async () => { if (window.__wcGlobe) window.__wcGlobe.hide(); window.__wcGlobeOn = false; gxr.nodes().pinned(false); gxr.forceLayout(); await gxr.sleep(1200); await gxr.flyToCenter(); });
   const fit = await Button("Fit to view", async () => { await gxr.flyToCenter(); });
   const clear = await Button("Clear canvas", async () => { if (window.__wcGlobe) { window.__wcGlobe.hide(); } gxr.clear(); gxr.toast().success("Canvas cleared"); });
   const wrap = html`<div class="wc"><div class="wc-eyebrow" style="margin:14px 2px 6px">Canvas · layouts</div><div class="wc-row"></div></div>`;
