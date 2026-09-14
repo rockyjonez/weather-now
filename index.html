@@ -94,6 +94,8 @@ header.top{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:flex-end;justif
 .tabs button{white-space:nowrap;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:7px 14px;font-size:14px;color:var(--text2);box-shadow:inset 0 0 0 3px var(--surface),inset 0 0 0 4px var(--line)}
 .tabs button:hover{color:var(--accent);border-color:var(--accent)}
 .tabs button[aria-selected=true]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);box-shadow:inset 0 0 0 3px var(--accent),inset 0 0 0 4px var(--accent-ink),var(--glow)}
+.tabs.sub{padding:0 0 4px;margin-top:-4px}
+.tabs.sub button{font-size:13px;padding:6px 12px}
 .tabs .dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-left:6px;vertical-align:1px;background:var(--sev-severe)}
 .tabs button[aria-selected=true] .dot{background:var(--accent-ink)}
 .view{display:grid;gap:14px}
@@ -230,11 +232,12 @@ const $ = s => document.querySelector(s);
 function el(tag, attrs = {}, ...kids) {
   const e = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
-    if (v == null || v === false) continue;
+    if (v == null) continue;
+    if (typeof v === 'boolean') { if (k.startsWith('aria-')) e.setAttribute(k, String(v)); else if (v) e.setAttribute(k, ''); continue; }
     if (k === 'class') e.className = v;
     else if (k === 'html') e.innerHTML = v;
     else if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
-    else e.setAttribute(k, v === true ? '' : v);
+    else e.setAttribute(k, v);
   }
   for (const k of kids.flat(Infinity)) { if (k == null || k === false) continue; e.append(k.nodeType ? k : document.createTextNode(k)); }
   return e;
@@ -868,7 +871,7 @@ const SATS = [
   { id: 49260, name: 'Landsat 9', emoji: '📷', about: 'Land-imaging satellite' },
   { id: 60133, name: 'GOES-19', emoji: '🌀', about: 'Geostationary weather satellite (GOES-East)' }
 ];
-const skyState = { gen: 0, timer: null, map: null, tles: null, passes: {}, selected: 25544, visibleOnly: true, calCache: {} };
+const skyState = { gen: 0, timer: null, map: null, tles: null, passes: {}, selected: 25544, visibleOnly: true, calCache: {}, sub: localStorage.getItem('wx.skySub') || 'sats' };
 const scriptP = {};
 function ensureScript(url) { if (!scriptP[url]) scriptP[url] = new Promise((res, rej) => document.head.append(el('script', { src: url, onload: res, onerror: () => rej(new Error('Could not load ' + url)) }))); return scriptP[url]; }
 async function fetchTLEs() {
@@ -1092,13 +1095,25 @@ function viewSky(d) {
       }
     };
     tick(true); skyState.timer = setInterval(() => tick(false), 2000);
+    setTimeout(() => { try { map.invalidateSize(); } catch (e) { } }, 50);
     // passes
     const from = Date.now(), to = from + 10 * dayMs, locKey = `${lat.toFixed(3)},${lon.toFixed(3)}`;
     if (skyState.passKey !== locKey) { skyState.passes = {}; skyState.passKey = locKey; }
     renderPasses();
     SATS.filter(s => s.pass && recs[s.id] && skyState.passes[s.id] == null).forEach(s => computePasses(recs[s.id], lat, lon, from, to, ps => { if (gen !== skyState.gen) return; skyState.passes[s.id] = ps; renderPasses(); tick(true); }));
   }).catch(e => { satTable.innerHTML = ''; satTable.append(el('p', { class: 'err' }, e.message)); passBox.innerHTML = ''; });
-  return [tonight, satSec, passSec, calendar];
+  const subs = [['sats', 'Satellites over Earth', satSec], ['passes', `Passes over ${state.label || 'this location'}`, passSec], ['cal', 'Sky calendar', calendar]];
+  if (!subs.some(x => x[0] === skyState.sub)) skyState.sub = 'sats';
+  const subnav = el('nav', { class: 'tabs sub', role: 'tablist', 'aria-label': 'Sky views' });
+  const showSub = key => {
+    skyState.sub = key; localStorage.setItem('wx.skySub', key);
+    subs.forEach(([k, , sec]) => { sec.hidden = k !== key; });
+    [...subnav.children].forEach((b, i) => b.setAttribute('aria-selected', subs[i][0] === key));
+    if (key === 'sats' && skyState.map) setTimeout(() => { try { skyState.map.invalidateSize(); } catch (e) { } }, 0);
+  };
+  subs.forEach(([k, name]) => subnav.append(el('button', { role: 'tab', 'aria-selected': k === skyState.sub, onclick: () => showSub(k) }, name)));
+  subs.forEach(([k, , sec]) => { sec.hidden = k !== skyState.sub; });
+  return [tonight, subnav, ...subs.map(x => x[2])];
 }
 
 // ---------- map view (NOAA nowCOAST WMS + Leaflet) ----------
