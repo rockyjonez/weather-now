@@ -60,6 +60,37 @@ Not every forecast office publishes every layer. Views say so explicitly when a
 layer (for example Lightning Activity Level or the fire danger indices) is
 absent for the selected point rather than showing zeros.
 
+## GraphXR grovebook
+
+`grove/weather-console.md` is the same console as a Kineviz GraphXR grovebook
+(also served at https://weather-now.exe.xyz/grove/weather-console.md). Open it
+in Kineviz Desktop by uploading the file through the Grove panel's file
+explorer, or drop it into a project's Grove folder.
+
+What it does, cell by cell:
+
+1. **Location** input (ZIP, city or `lat,lon`; default 07304) → `loc`.
+2. **`wx`** fetches the NWS forecast grid, hourly forecast, 7-day forecast,
+   alerts, nearest observation and Open-Meteo days 8–10, and samples 13 hours.
+3. **Charts**: current conditions, next 12 hours, 10-day highs and lows,
+   tonight's sky, naked-eye passes, 10-day sky calendar, NESDIS imagery and
+   the NASA picture of the day.
+4. **Build weather graph**: `Location` → `Hour` nodes chained by `NEXT`,
+   `Day` nodes for the outlook, `Alert` nodes with `AFFECTS` edges.
+5. **Build sky graph**: `Satellite` nodes with live lat/lon, `Pass` nodes
+   (`Satellite -PASSES-> Pass -OVER-> Location`), `Planet` and `SkyEvent`
+   nodes.
+6. **Show globe**: `gxr.createGlobe()` puts a day/night Earth on the canvas
+   and pins every node with lat/lon to it; neighbours fan outward.
+7. **Live satellite tracking**: every 3 s the Satellite nodes are re-merged
+   with fresh SGP4 positions and re-projected on the globe.
+8. **Layouts**: timeline (`gxr.parametric` with hour index × temperature),
+   force, fit, clear. Selecting a node on the canvas shows its properties in
+   the notebook.
+
+Orbital propagation uses satellite.js loaded with Grove's `require`; every
+other computation is the same code as `index.html`.
+
 ## Styling
 
 The look is a Doctor Who fan tribute: TARDIS-blue console panels, amber

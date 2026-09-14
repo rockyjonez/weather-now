@@ -8,6 +8,8 @@ cd "$(dirname "$0")"
 
 ssh "$HOST" "sudo mkdir -p $ROOT && sudo chown \$USER $ROOT"
 scp -q index.html "$HOST:$ROOT/index.html"
+ssh "$HOST" "mkdir -p $ROOT/grove"
+scp -q grove/*.md "$HOST:$ROOT/grove/"
 
 ssh "$HOST" 'sudo tee /etc/nginx/sites-available/weather-now >/dev/null <<EOF
 server {
