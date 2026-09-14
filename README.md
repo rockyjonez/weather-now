@@ -16,6 +16,8 @@ Live: https://weather-now.exe.xyz
 | Map | Leaflet map with NOAA nowCOAST layers: radar loop, lightning density, GOES infrared clouds, forecast temperature, feels-like, rain chance, rain amount, snow, cloud cover, wind speed, gusts, wind barbs, humidity, and NWS alert polygons; time slider and play button; click for the value at a point or to load that point's forecast |
 | 10-day | Day cards with NWS text, icons, highs and lows for seven days and Open-Meteo model guidance for days 8 to 10; highs/lows, precipitation and wind charts across all ten days |
 | Overview (sky block) | Live map of the ISS, Tiangong, Hubble, NOAA-20, Terra, Landsat 9 and GOES-19 from CelesTrak orbital elements (satellite.js SGP4), with ground track, horizon footprint and day/night terminator; naked-eye pass predictions over the location for 10 days; tonight's sky and a 10-day calendar of sun/moon times, moon phase, visible planets, moon phases, equinoxes, meteor-shower peaks, eclipses and conjunctions |
+| NESDIS imagery (sky sub-tab) | Live GOES-East/West imagery from NOAA NESDIS STAR: local sector, CONUS or full disk; GeoColor, clean IR, visible, water vapor, shortwave IR, air mass, sandwich, fire temperature, dust; still or animated loop |
+| Astronomy picture of the day | NASA APOD at the bottom of every view, with explanation and full-resolution link |
 | Temperature | Air, feels-like and dew point lines; heat index / wind chill; NWS HeatRisk; heat and cold alerts |
 | Rain | Probability of precipitation, liquid amount per hour, precipitation type and coverage, flood alerts |
 | Clouds & sky | Sky cover, relative humidity, visibility and ceiling where published, sunrise and sunset |
@@ -83,6 +85,12 @@ Then open `http://localhost:8765/?lat=37.7749&lon=-122.4194`.
 the VM's proxy port. See the script for the one-time nginx setup.
 
 ## Data notes
+
+- APOD is read from `apod.json`, which `deploy.sh` keeps fresh on the VM with an
+  hourly cron job using NASA's public DEMO_KEY (so viewers never hit the API
+  rate limit); the page falls back to calling the API directly.
+- GOES imagery comes straight from `cdn.star.nesdis.noaa.gov`; the local sector
+  is picked from the location's latitude and longitude.
 
 - Satellite positions come from CelesTrak two-line elements (cached six hours)
   propagated in the browser with satellite.js. A pass counts as naked-eye when

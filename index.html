@@ -156,6 +156,9 @@ table.data tr.night td{background:var(--night)}
 .day details{font-size:13px;margin-top:4px}.day summary{cursor:pointer;color:var(--accent)}.day details p{margin:6px 0 0;color:var(--text2)}
 .day .src{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.14em;margin-top:auto;padding-top:6px}
 .skymap{height:440px}
+.apod img{width:100%;max-width:1000px;border-radius:10px;border:1px solid var(--line);display:block}
+.apod-video{position:relative;padding-top:56.25%;max-width:1000px}
+.apod-video iframe{position:absolute;inset:0;width:100%;height:100%;border:0;border-radius:10px}
 .satmark{background:none;border:0;white-space:nowrap;font-size:16px;line-height:24px}
 .satmark i{font-style:normal;font-size:11px;font-weight:700;color:#fff;background:rgba(0,0,0,.55);padding:1px 5px;border-radius:4px;margin-left:2px;vertical-align:3px}
 table.data.narrow{min-width:640px}
@@ -220,6 +223,7 @@ footer{margin-top:28px;font-size:13px;color:var(--muted);line-height:1.6}
   <nav class="tabs" id="tabs" role="tablist" aria-label="Weather views"></nav>
   <div class="view" id="view" role="tabpanel"></div>
 
+  <div id="apod" style="margin-top:14px"></div>
   <footer data-container="Footer" id="foot"></footer>
 </div>
 <div class="tip" id="tip" hidden></div>
@@ -227,7 +231,7 @@ footer{margin-top:28px;font-size:13px;color:var(--muted);line-height:1.6}
 <script>
 'use strict';
 const API = 'https://api.weather.gov';
-const BUILD = '2026-09-14.6';
+const BUILD = '2026-09-14.7';
 const HOUR = 3600e3;
 const $ = s => document.querySelector(s);
 function el(tag, attrs = {}, ...kids) {
@@ -1122,7 +1126,7 @@ function skyPanels(d, cal) {
     renderPasses(); updateNextPass(d);
     SATS.filter(s => s.pass && recs[s.id] && skyState.passes[s.id] == null).forEach(s => computePasses(recs[s.id], lat, lon, from, to, ps => { if (gen !== skyState.gen) return; skyState.passes[s.id] = ps; renderPasses(); updateNextPass(d); tick(true); }));
   }).catch(e => { satTable.innerHTML = ''; satTable.append(el('p', { class: 'err' }, e.message)); passBox.innerHTML = ''; });
-  const subs = [['sats', 'Satellites over Earth', satSec], ['passes', `Passes over ${state.label || 'here'}`, passSec], ['moon', 'Moon & Sun', moonSec], ['planets', 'Planets', planetSec], ['events', 'Events', eventSec], ['cal', 'Full calendar', calendar]];
+  const subs = [['sats', 'Satellites over Earth', satSec], ['passes', `Passes over ${state.label || 'here'}`, passSec], ['nesdis', 'NESDIS imagery', nesdisSection()], ['moon', 'Moon & Sun', moonSec], ['planets', 'Planets', planetSec], ['events', 'Events', eventSec], ['cal', 'Full calendar', calendar]];
   if (!subs.some(x => x[0] === skyState.sub)) skyState.sub = 'sats';
   const subnav = el('nav', { class: 'tabs sub', role: 'tablist', 'aria-label': 'Sky views' });
   const showSub = key => {
@@ -1136,6 +1140,78 @@ function skyPanels(d, cal) {
   return [subnav, ...subs.map(x => x[2])];
 }
 function viewSky(d) { const cal = skyCalendar(state.lat, state.lon, d.tz); return [skySummary(d, cal), ...skyPanels(d, cal)]; }
+
+// ---------- NESDIS GOES imagery + NASA APOD ----------
+const NESDIS_CDN = 'https://cdn.star.nesdis.noaa.gov';
+const NESDIS_PRODUCTS = [['GEOCOLOR', 'GeoColor', 'True colour by day, infrared with city lights at night.'], ['13', 'Clean infrared', 'Band 13 cloud-top temperature: colder, higher clouds are brighter.'], ['02', 'Visible', 'Band 2 red visible, 0.5 km resolution; dark at night.'], ['08', 'Water vapor', 'Band 8 upper-level moisture and jet-stream flow.'], ['07', 'Shortwave IR', 'Band 3.9 µm: hot spots, fires and fog at night.'], ['AirMass', 'Air mass', 'RGB of water-vapor and ozone bands: cyclones, jets, dry intrusions.'], ['Sandwich', 'Sandwich', 'Visible texture blended with infrared colour for storm tops.'], ['FireTemperature', 'Fire temperature', 'RGB tuned to show active fire intensity.'], ['Dust', 'Dust', 'RGB that highlights blowing dust and volcanic ash.']];
+function nesdisSector(lat, lon) {
+  if (lat < 23 && lon < -154) return { sat: 'GOES18', sec: 'hi', name: 'Hawaii' };
+  if (lat > 50 && lon < -130) return { sat: 'GOES18', sec: 'cak', name: 'Alaska' };
+  if (lat < 19.5 && lon > -68.5 && lon < -64) return { sat: 'GOES19', sec: 'pr', name: 'Puerto Rico' };
+  if (lon < -114) return lat >= 42 ? { sat: 'GOES18', sec: 'pnw', name: 'Pacific Northwest' } : { sat: 'GOES18', sec: 'psw', name: 'Pacific Southwest' };
+  if (lon < -104) return lat >= 41 ? { sat: 'GOES19', sec: 'nr', name: 'Northern Rockies' } : { sat: 'GOES19', sec: 'sr', name: 'Southern Rockies' };
+  if (lon < -93) return lat >= 40 ? { sat: 'GOES19', sec: 'umv', name: 'Upper Mississippi Valley' } : { sat: 'GOES19', sec: 'sp', name: 'Southern Plains' };
+  if (lon < -83) return lat >= 38 ? { sat: 'GOES19', sec: 'cgl', name: 'Central Great Lakes' } : { sat: 'GOES19', sec: 'smv', name: 'Southern Mississippi Valley' };
+  return lat >= 37 ? { sat: 'GOES19', sec: 'ne', name: 'Northeast' } : { sat: 'GOES19', sec: 'se', name: 'Southeast' };
+}
+const nesdisState = { region: localStorage.getItem('wx.nesdisRegion') || 'sector', product: localStorage.getItem('wx.nesdisProduct') || 'GEOCOLOR', loop: false };
+function nesdisSection() {
+  const lat = state.lat, lon = state.lon, sec = nesdisSector(lat, lon);
+  const westOnly = sec.sat === 'GOES18';
+  const regions = [['sector', `${sec.name} sector`], ['conus', 'Continental US'], ['fd', 'Full disk']];
+  const wrap = el('div');
+  const body = el('div', { style: 'margin-top:10px' });
+  const draw = () => {
+    const prod = NESDIS_PRODUCTS.find(p => p[0] === nesdisState.product) || NESDIS_PRODUCTS[0];
+    const sat = nesdisState.region === 'sector' ? sec.sat : (westOnly ? 'GOES18' : 'GOES19');
+    const satName = sat === 'GOES18' ? 'GOES-18 (West)' : 'GOES-19 (East)';
+    const bust = Math.floor(Date.now() / 3e5);
+    let still, loop, label;
+    if (nesdisState.region === 'sector') { still = `${NESDIS_CDN}/${sat}/ABI/SECTOR/${sec.sec}/${prod[0]}/1200x1200.jpg`; loop = `${NESDIS_CDN}/${sat}/ABI/SECTOR/${sec.sec}/${prod[0]}/${sat}-${sec.sec.toUpperCase()}-${prod[0]}-600x600.gif`; label = `${sec.name} sector`; }
+    else if (nesdisState.region === 'conus') { still = `${NESDIS_CDN}/${sat}/ABI/CONUS/${prod[0]}/1250x750.jpg`; loop = `${NESDIS_CDN}/${sat}/ABI/CONUS/${prod[0]}/${sat}-CONUS-${prod[0]}-625x375.gif`; label = westOnly ? 'Pacific US view' : 'Continental US'; }
+    else { still = `${NESDIS_CDN}/${sat}/ABI/FD/${prod[0]}/1808x1808.jpg`; loop = null; label = 'Full disk'; }
+    const src = nesdisState.loop && loop ? loop : still;
+    body.innerHTML = '';
+    const img = el('img', { src: `${src}?t=${bust}`, alt: `${satName} ${prod[1]} ${label}`, loading: 'lazy', style: 'width:100%;max-width:1000px;border-radius:10px;border:1px solid var(--line);display:block;background:#000;min-height:200px' });
+    img.onerror = () => { body.innerHTML = ''; body.append(el('p', { class: 'empty' }, `NESDIS has no ${prod[1]} ${nesdisState.loop ? 'loop' : 'image'} for this view right now. Try another product or region.`)); };
+    body.append(el('a', { href: src, target: '_blank', rel: 'noopener', title: 'Open full-size image' }, img),
+      el('p', { class: 'note', style: 'margin-top:8px' }, `${satName} · ${prod[1]}: ${prod[2]} New images every 5–10 minutes; ${nesdisState.loop ? 'the loop covers the last few hours.' : 'click to open full size.'} `, el('a', { href: `https://www.star.nesdis.noaa.gov/GOES/${nesdisState.region === 'sector' ? `sector.php?sat=G${sat.slice(4)}&sector=${sec.sec}` : nesdisState.region === 'conus' ? `conus.php?sat=G${sat.slice(4)}` : `fulldisk.php?sat=G${sat.slice(4)}`}`, target: '_blank', rel: 'noopener' }, 'Open on NESDIS STAR')));
+  };
+  const pillRow = (items, get, set) => el('div', { class: 'pills' }, items.map(([k, name]) => el('button', { 'aria-pressed': get() === k, onclick: e => { set(k); [...e.target.parentNode.children].forEach(b => b.setAttribute('aria-pressed', b === e.target)); draw(); } }, name)));
+  wrap.append(
+    el('div', { class: 'mapctl' }, pillRow(regions, () => nesdisState.region, k => { nesdisState.region = k; localStorage.setItem('wx.nesdisRegion', k); if (k === 'fd') nesdisState.loop = false; })),
+    el('div', { class: 'mapctl' }, pillRow(NESDIS_PRODUCTS.map(p => [p[0], p[1]]), () => nesdisState.product, k => { nesdisState.product = k; localStorage.setItem('wx.nesdisProduct', k); }),
+      el('label', { class: 'chk' }, el('input', { type: 'checkbox', checked: nesdisState.loop || null, onchange: e => { nesdisState.loop = e.target.checked; draw(); } }), 'Animate (loop)')),
+    body);
+  draw();
+  return section('NESDIS satellite imagery', el('p', { class: 'lede' }, 'Live GOES imagery from NOAA NESDIS STAR: the geostationary weather satellites that watch the Americas around the clock. The local sector is chosen from the current location.'), wrap);
+}
+async function loadApod() {
+  const host = document.getElementById('apod'); if (!host) return;
+  const today = new Date().toISOString().slice(0, 10);
+  let data = null;
+  try { const c = JSON.parse(localStorage.getItem('wx.apod') || 'null'); if (c && c.date === today) data = c; } catch (e) { }
+  if (!data) {
+    try { const r = await fetch('apod.json', { cache: 'no-cache' }); if (r.ok) { const j = await r.json(); if (j && j.url) data = j; } } catch (e) { }
+  }
+  if (!data || data.date !== today) {
+    try { const r = await fetch('https://api.nasa.gov/planetary/apod?api_key=DEMO_KEY&thumbs=true'); if (r.ok) data = await r.json(); } catch (e) { }
+  }
+  host.innerHTML = '';
+  if (!data || !data.url) { host.append(section('Astronomy picture of the day', el('p', { class: 'empty' }, 'NASA’s picture of the day is not reachable right now. ', el('a', { href: 'https://apod.nasa.gov/apod/astropix.html', target: '_blank', rel: 'noopener' }, 'Open it on apod.nasa.gov')))); return; }
+  try { localStorage.setItem('wx.apod', JSON.stringify(data)); } catch (e) { }
+  let media;
+  if (data.media_type === 'video') {
+    const yt = /(?:youtube\.com\/embed\/|youtu\.be\/|youtube\.com\/watch\?v=)([\w-]+)/.exec(data.url || '');
+    media = yt ? el('div', { class: 'apod-video' }, el('iframe', { src: `https://www.youtube.com/embed/${yt[1]}`, title: data.title, allow: 'accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture', allowfullscreen: '', loading: 'lazy' })) : el('a', { href: data.url, target: '_blank', rel: 'noopener' }, data.thumbnail_url ? el('img', { src: data.thumbnail_url, alt: data.title }) : `Watch: ${data.title}`);
+  } else media = el('a', { href: data.hdurl || data.url, target: '_blank', rel: 'noopener', title: 'Open full resolution' }, el('img', { src: data.url, alt: data.title, loading: 'lazy' }));
+  host.append(el('section', { class: 'card apod', 'data-container': 'Astronomy picture of the day' },
+    el('h2', {}, 'Astronomy picture of the day'),
+    el('p', { class: 'lede' }, el('b', {}, data.title), ` · ${dayMD(data.date)} ${data.date.slice(0, 4)}`, data.copyright ? el('span', { class: 'note' }, ` · © ${data.copyright.trim()}`) : null),
+    media,
+    el('details', { style: 'margin-top:10px' }, el('summary', { style: 'cursor:pointer;color:var(--accent)' }, 'Explanation'), el('p', { style: 'color:var(--text2);margin:8px 0 0' }, data.explanation || '')),
+    el('p', { class: 'note', style: 'margin-top:8px' }, 'NASA Astronomy Picture of the Day. ', el('a', { href: `https://apod.nasa.gov/apod/ap${data.date.slice(2).replace(/-/g, '')}.html`, target: '_blank', rel: 'noopener' }, 'Open on apod.nasa.gov'))));
+}
 
 // ---------- map view (NOAA nowCOAST WMS + Leaflet) ----------
 const NOWCOAST = 'https://nowcoast.noaa.gov/geoserver';
@@ -1323,6 +1399,7 @@ document.addEventListener('keydown', e => { if (e.target.tagName === 'INPUT') re
 setInterval(() => { if (state.lat != null && !state.loading && document.visibilityState === 'visible' && state.view !== 'map' && state.view !== 'overview') load(state.lat, state.lon, state.label); }, 10 * 60e3);
 
 // ---------- boot ----------
+loadApod();
 (function boot() {
   const qs = new URLSearchParams(location.search);
   if (qs.get('lat') && qs.get('lon')) return load(+qs.get('lat'), +qs.get('lon'), qs.get('name'));
