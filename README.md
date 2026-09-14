@@ -15,6 +15,7 @@ Live: https://weather-now.exe.xyz
 | Overview | Hourly strip with NWS icons, at-a-glance tiles, temperature and rain charts |
 | Map | Leaflet map with NOAA nowCOAST layers: radar loop, lightning density, GOES infrared clouds, forecast temperature, feels-like, rain chance, rain amount, snow, cloud cover, wind speed, gusts, wind barbs, humidity, and NWS alert polygons; time slider and play button; click for the value at a point or to load that point's forecast |
 | 10-day | Day cards with NWS text, icons, highs and lows for seven days and Open-Meteo model guidance for days 8 to 10; highs/lows, precipitation and wind charts across all ten days |
+| Sky & satellites | Live map of the ISS, Tiangong, Hubble, NOAA-20, Terra, Landsat 9 and GOES-19 from CelesTrak orbital elements (satellite.js SGP4), with ground track, horizon footprint and day/night terminator; naked-eye pass predictions over the location for 10 days; tonight's sky and a 10-day calendar of sun/moon times, moon phase, visible planets, moon phases, equinoxes, meteor-shower peaks, eclipses and conjunctions |
 | Temperature | Air, feels-like and dew point lines; heat index / wind chill; NWS HeatRisk; heat and cold alerts |
 | Rain | Probability of precipitation, liquid amount per hour, precipitation type and coverage, flood alerts |
 | Clouds & sky | Sky cover, relative humidity, visibility and ceiling where published, sunrise and sunset |
@@ -82,6 +83,15 @@ Then open `http://localhost:8765/?lat=37.7749&lon=-122.4194`.
 the VM's proxy port. See the script for the one-time nginx setup.
 
 ## Data notes
+
+- Satellite positions come from CelesTrak two-line elements (cached six hours)
+  propagated in the browser with satellite.js. A pass counts as naked-eye when
+  the observer's sun is below -6° and the satellite is outside Earth's shadow,
+  with a visible peak of at least 10°.
+- Sun, moon and planet positions are computed in the page from low-precision
+  J2000 formulas (suncalc-style sun/moon, JPL approximate Keplerian elements for
+  the planets), accurate to a fraction of a degree. Meteor shower and eclipse
+  dates are static tables.
 
 - The NWS API publishes seven days of forecast. The 10-day view uses it for
   days 1 to 7 and Open-Meteo (`api.open-meteo.com`, no key) for days 8 to 10

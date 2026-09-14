@@ -153,6 +153,10 @@ table.data tr.night td{background:var(--night)}
 .day .mt{font-size:12px;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 10px}
 .day details{font-size:13px;margin-top:4px}.day summary{cursor:pointer;color:var(--accent)}.day details p{margin:6px 0 0;color:var(--text2)}
 .day .src{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.14em;margin-top:auto;padding-top:6px}
+.skymap{height:440px}
+.satmark{background:none;border:0;white-space:nowrap;font-size:16px;line-height:24px}
+.satmark i{font-style:normal;font-size:11px;font-weight:700;color:#fff;background:rgba(0,0,0,.55);padding:1px 5px;border-radius:4px;margin-left:2px;vertical-align:3px}
+table.data.narrow{min-width:640px}
 .map{height:560px;border-radius:10px;overflow:hidden;border:1px solid var(--line);background:var(--surface2)}
 @media(max-width:760px){.map{height:420px}}
 .mapctl{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin-bottom:10px}
@@ -245,7 +249,7 @@ function sv(tag, attrs = {}, ...kids) {
 
 // ---------- state ----------
 const VIEWS = [
-  ['overview', 'Overview'], ['map', 'Map'], ['tenday', '10-day'], ['temperature', 'Temperature'], ['rain', 'Rain'], ['clouds', 'Clouds & sky'], ['wind', 'Wind'],
+  ['overview', 'Overview'], ['map', 'Map'], ['tenday', '10-day'], ['sky', 'Sky & satellites'], ['temperature', 'Temperature'], ['rain', 'Rain'], ['clouds', 'Clouds & sky'], ['wind', 'Wind'],
   ['storms', 'Storms & lightning'], ['snow', 'Snow & ice'], ['fire', 'Fire weather'], ['alerts', 'Alerts'], ['table', 'Data table']
 ];
 const state = {
@@ -502,7 +506,7 @@ function render() {
   if (state.error) { $('#now').append(el('div', { class: 'err' }, state.error)); renderFooter(); return; }
   if (!d) { $('#now').append(el('div', { class: 'skel' }, 'Materialising…')); return; }
   renderBanner(d); renderNow(d); renderTabs(d);
-  const fn = { overview: viewOverview, map: viewMap, tenday: viewTenDay, temperature: viewTemp, rain: viewRain, clouds: viewClouds, wind: viewWind, storms: viewStorms, snow: viewSnow, fire: viewFire, alerts: viewAlerts, table: viewTable }[state.view];
+  const fn = { overview: viewOverview, map: viewMap, tenday: viewTenDay, sky: viewSky, temperature: viewTemp, rain: viewRain, clouds: viewClouds, wind: viewWind, storms: viewStorms, snow: viewSnow, fire: viewFire, alerts: viewAlerts, table: viewTable }[state.view];
   $('#view').append(...[].concat(fn(d)).filter(Boolean));
   renderFooter(d);
 }
@@ -854,6 +858,249 @@ function viewTenDay(d) {
   ];
 }
 
+// ---------- sky: satellites and astronomy ----------
+const SATS = [
+  { id: 25544, name: 'ISS', emoji: '🛰️', pass: true, about: 'International Space Station' },
+  { id: 48274, name: 'Tiangong', emoji: '🛰️', pass: true, about: 'Chinese space station' },
+  { id: 20580, name: 'Hubble', emoji: '🔭', pass: true, about: 'Hubble Space Telescope' },
+  { id: 43013, name: 'NOAA-20', emoji: '🌐', about: 'Polar-orbiting weather satellite (JPSS-1)' },
+  { id: 25994, name: 'Terra', emoji: '🌍', about: 'NASA Earth-observing satellite' },
+  { id: 49260, name: 'Landsat 9', emoji: '📷', about: 'Land-imaging satellite' },
+  { id: 60133, name: 'GOES-19', emoji: '🌀', about: 'Geostationary weather satellite (GOES-East)' }
+];
+const skyState = { gen: 0, timer: null, map: null, tles: null, passes: {}, selected: 25544, visibleOnly: true, calCache: {} };
+const scriptP = {};
+function ensureScript(url) { if (!scriptP[url]) scriptP[url] = new Promise((res, rej) => document.head.append(el('script', { src: url, onload: res, onerror: () => rej(new Error('Could not load ' + url)) }))); return scriptP[url]; }
+async function fetchTLEs() {
+  let cached = null; try { cached = JSON.parse(localStorage.getItem('wx.tle') || 'null'); } catch (e) { }
+  if (cached && Date.now() - cached.t < 6 * HOUR && Object.keys(cached.d).length >= 3) return cached.d;
+  const d = {};
+  await Promise.all(SATS.map(async s => {
+    try {
+      const r = await fetch(`https://celestrak.org/NORAD/elements/gp.php?CATNR=${s.id}&FORMAT=TLE`);
+      const L = (await r.text()).trim().split('\n').map(x => x.trim());
+      if (L.length >= 3 && L[1].startsWith('1 ')) d[s.id] = { name: L[0], l1: L[1], l2: L[2] };
+    } catch (e) { }
+  }));
+  if (!d[25544]) { try { const j = await (await fetch('https://api.wheretheiss.at/v1/satellites/25544/tles')).json(); d[25544] = { name: j.header, l1: j.line1, l2: j.line2 }; } catch (e) { } }
+  if (Object.keys(d).length) { try { localStorage.setItem('wx.tle', JSON.stringify({ t: Date.now(), d })); } catch (e) { } return d; }
+  return cached ? cached.d : {};
+}
+// --- astronomy (J2000-based low-precision formulas; good to a fraction of a degree)
+const J2000ms = Date.UTC(2000, 0, 1, 12), OBL = rad * 23.4397, DEG = 180 / Math.PI;
+const jdays = t => (t - J2000ms) / dayMs;
+function sunCoords(d) { const M = rad * (357.5291 + 0.98560028 * d), L = M + rad * (1.9148 * Math.sin(M) + 0.02 * Math.sin(2 * M) + 0.0003 * Math.sin(3 * M)) + rad * 102.9372 + Math.PI; return { dec: Math.asin(Math.sin(OBL) * Math.sin(L)), ra: Math.atan2(Math.sin(L) * Math.cos(OBL), Math.cos(L)) }; }
+function moonCoords(d) { const L = rad * (218.316 + 13.176396 * d), M = rad * (134.963 + 13.064993 * d), F = rad * (93.272 + 13.229350 * d); const l = L + rad * 6.289 * Math.sin(M), b = rad * 5.128 * Math.sin(F), dist = 385001 - 20905 * Math.cos(M); return { ra: Math.atan2(Math.sin(l) * Math.cos(OBL) - Math.tan(b) * Math.sin(OBL), Math.cos(l)), dec: Math.asin(Math.sin(b) * Math.cos(OBL) + Math.cos(b) * Math.sin(OBL) * Math.sin(l)), dist }; }
+const sidereal = (d, lw) => rad * (280.16 + 360.9856235 * d) - lw;
+function altAz(ra, dec, d, lat, lon) { const lw = -rad * lon, phi = rad * lat, H = sidereal(d, lw) - ra; const alt = Math.asin(Math.sin(phi) * Math.sin(dec) + Math.cos(phi) * Math.cos(dec) * Math.cos(H)); const az = Math.atan2(Math.sin(H), Math.cos(H) * Math.sin(phi) - Math.tan(dec) * Math.cos(phi)) + Math.PI; return { alt, az: (az + 2 * Math.PI) % (2 * Math.PI) }; }
+const sunAlt = (t, lat, lon) => { const d = jdays(t), s = sunCoords(d); return altAz(s.ra, s.dec, d, lat, lon).alt; };
+function moonIllum(t) { const d = jdays(t), s = sunCoords(d), m = moonCoords(d), sdist = 149598000; const phi = Math.acos(Math.sin(s.dec) * Math.sin(m.dec) + Math.cos(s.dec) * Math.cos(m.dec) * Math.cos(s.ra - m.ra)); const inc = Math.atan2(sdist * Math.sin(phi), m.dist - sdist * Math.cos(phi)); const angle = Math.atan2(Math.cos(s.dec) * Math.sin(s.ra - m.ra), Math.sin(s.dec) * Math.cos(m.dec) - Math.cos(s.dec) * Math.sin(m.dec) * Math.cos(s.ra - m.ra)); return { fraction: (1 + Math.cos(inc)) / 2, phase: 0.5 + 0.5 * inc * (angle < 0 ? -1 : 1) / Math.PI }; }
+function moonAlt(t, lat, lon) { const d = jdays(t), m = moonCoords(d); const a = altAz(m.ra, m.dec, d, lat, lon).alt; return a - Math.atan(6371 / m.dist) * Math.cos(a); }
+function moonTimes(t0, lat, lon) {
+  const hc = 0.133 * rad; let h0 = moonAlt(t0, lat, lon) - hc, rise, set, ye = 0;
+  for (let i = 1; i <= 24; i += 2) {
+    const h1 = moonAlt(t0 + i * HOUR, lat, lon) - hc, h2 = moonAlt(t0 + (i + 1) * HOUR, lat, lon) - hc;
+    const a = (h0 + h2) / 2 - h1, b = (h2 - h0) / 2, xe = -b / (2 * a); ye = (a * xe + b) * xe + h1;
+    const dd = b * b - 4 * a * h1; let roots = 0, x1 = 0, x2 = 0;
+    if (dd >= 0) { const dx = Math.sqrt(dd) / (Math.abs(a) * 2); x1 = xe - dx; x2 = xe + dx; if (Math.abs(x1) <= 1) roots++; if (Math.abs(x2) <= 1) roots++; if (x1 < -1) x1 = x2; }
+    if (roots === 1) { if (h0 < 0) rise = i + x1; else set = i + x1; } else if (roots === 2) { rise = i + (ye < 0 ? x2 : x1); set = i + (ye < 0 ? x1 : x2); }
+    if (rise != null && set != null) break; h0 = h2;
+  }
+  const r = {}; if (rise != null) r.rise = t0 + rise * HOUR; if (set != null) r.set = t0 + set * HOUR; if (rise == null && set == null) r[ye > 0 ? 'alwaysUp' : 'alwaysDown'] = true; return r;
+}
+const PLANETS = [
+  ['Mercury', 0.38709927, 0.20563593, 7.00497902, 252.25032350, 77.45779628, 48.33076593, 0.00000037, 0.00001906, -0.00594749, 149472.67411175, 0.16047689, -0.12534081],
+  ['Venus', 0.72333566, 0.00677672, 3.39467605, 181.97909950, 131.60246718, 76.67984255, 0.00000390, -0.00004107, -0.00078890, 58517.81538729, 0.00268329, -0.27769418],
+  ['Earth', 1.00000261, 0.01671123, -0.00001531, 100.46457166, 102.93768193, 0.0, 0.00000562, -0.00004392, -0.01294668, 35999.37244981, 0.32327364, 0.0],
+  ['Mars', 1.52371034, 0.09339410, 1.84969142, -4.55343205, -23.94362959, 49.55953891, 0.00001847, 0.00007882, -0.00813131, 19140.30268499, 0.44441088, -0.29257343],
+  ['Jupiter', 5.20288700, 0.04838624, 1.30439695, 34.39644051, 14.72847983, 100.47390909, -0.00011607, -0.00013253, -0.00183714, 3034.74612775, 0.21252668, 0.20469106],
+  ['Saturn', 9.53667594, 0.05386179, 2.48599187, 49.95424423, 92.59887831, 113.66242448, -0.00125060, -0.00050991, 0.00193609, 1222.49362201, -0.41897216, -0.28867794]];
+function helio(p, T) {
+  const a = p[1] + p[7] * T, e = p[2] + p[8] * T, I = rad * (p[3] + p[9] * T), L = p[4] + p[10] * T, wb = p[5] + p[11] * T, Od = p[6] + p[12] * T, O = rad * Od, w = rad * (wb - Od);
+  const M = rad * ((((L - wb) % 360) + 540) % 360 - 180); let E = M + e * Math.sin(M);
+  for (let i = 0; i < 12; i++) { const dE = (M - (E - e * Math.sin(E))) / (1 - e * Math.cos(E)); E += dE; if (Math.abs(dE) < 1e-9) break; }
+  const xp = a * (Math.cos(E) - e), yp = a * Math.sqrt(1 - e * e) * Math.sin(E), cw = Math.cos(w), sw = Math.sin(w), cO = Math.cos(O), sO = Math.sin(O), cI = Math.cos(I), sI = Math.sin(I);
+  return { x: (cw * cO - sw * sO * cI) * xp + (-sw * cO - cw * sO * cI) * yp, y: (cw * sO + sw * cO * cI) * xp + (-sw * sO + cw * cO * cI) * yp, z: sw * sI * xp + cw * sI * yp };
+}
+function planetRaDec(name, t) { const T = jdays(t) / 36525, E = helio(PLANETS[2], T), P = helio(PLANETS.find(p => p[0] === name), T); const x = P.x - E.x, y = P.y - E.y, z = P.z - E.z; const ye = y * Math.cos(OBL) - z * Math.sin(OBL), ze = y * Math.sin(OBL) + z * Math.cos(OBL); return { ra: Math.atan2(ye, x), dec: Math.atan2(ze, Math.hypot(x, ye)), dist: Math.hypot(x, y, z) }; }
+const angSep = (a, b) => Math.acos(Math.min(1, Math.sin(a.dec) * Math.sin(b.dec) + Math.cos(a.dec) * Math.cos(b.dec) * Math.cos(a.ra - b.ra)));
+const PLANET_NAMES = ['Mercury', 'Venus', 'Mars', 'Jupiter', 'Saturn'], PLANET_EMOJI = { Mercury: '☿', Venus: '♀', Mars: '♂', Jupiter: '♃', Saturn: '♄' };
+function planetsUp(t, lat, lon, minAlt) {
+  const d = jdays(t), s = sunCoords(d), out = [];
+  PLANET_NAMES.forEach(n => { const p = planetRaDec(n, t), aa = altAz(p.ra, p.dec, d, lat, lon), elong = angSep(p, s) * DEG; if (aa.alt * DEG >= (minAlt ?? 8) && elong > 12) out.push({ name: n, alt: aa.alt * DEG, az: aa.az * DEG, elong, dist: p.dist }); });
+  return out.sort((a, b) => b.alt - a.alt);
+}
+function tzOffsetMs(t, tz) { const p = {}; new Intl.DateTimeFormat('en-US', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' }).formatToParts(new Date(t)).forEach(x => p[x.type] = x.value); return Date.UTC(+p.year, p.month - 1, +p.day, +p.hour, +p.minute, +p.second) - Math.floor(t / 1000) * 1000; }
+function localMidnight(dateStr, tz) { const [y, m, d] = dateStr.split('-').map(Number); const guess = Date.UTC(y, m - 1, d, 12); return Date.UTC(y, m - 1, d) - tzOffsetMs(guess, tz); }
+const PHASE_NAMES = [[0.0625, 'New moon', '🌑'], [0.1875, 'Waxing crescent', '🌒'], [0.3125, 'First quarter', '🌓'], [0.4375, 'Waxing gibbous', '🌔'], [0.5625, 'Full moon', '🌕'], [0.6875, 'Waning gibbous', '🌖'], [0.8125, 'Last quarter', '🌗'], [0.9375, 'Waning crescent', '🌘'], [1.01, 'New moon', '🌑']];
+const phaseName = ph => PHASE_NAMES.find(x => ph < x[0]);
+function phaseEvents(from, to) {
+  const ev = [], targets = [[0, 'New moon', '🌑'], [0.25, 'First quarter', '🌓'], [0.5, 'Full moon', '🌕'], [0.75, 'Last quarter', '🌗']];
+  let prev = moonIllum(from).phase;
+  for (let t = from + HOUR; t <= to; t += HOUR) {
+    const ph = moonIllum(t).phase;
+    targets.forEach(([tg, name, emo]) => { const a = prev - tg, b = ph - tg; const cross = tg === 0 ? (prev > 0.9 && ph < 0.1) : (a < 0 && b >= 0); if (cross) { let lo = t - HOUR, hi = t; for (let i = 0; i < 20; i++) { const mid = (lo + hi) / 2, pm = moonIllum(mid).phase; if (tg === 0 ? pm > 0.5 : pm < tg) lo = mid; else hi = mid; } ev.push({ t: (lo + hi) / 2, name, emoji: emo, kind: 'moon' }); } });
+    prev = ph;
+  }
+  return ev;
+}
+function seasonEvents(from, to) {
+  const out = []; const y0 = new Date(from).getUTCFullYear();
+  for (const y of [y0, y0 + 1]) { const Y = (y - 2000) / 1000;
+    [[2451623.80984 + 365242.37404 * Y + 0.05169 * Y * Y - 0.00411 * Y ** 3 - 0.00057 * Y ** 4, 'March equinox', '🌍'], [2451716.56767 + 365241.62603 * Y + 0.00325 * Y * Y + 0.00888 * Y ** 3 - 0.00030 * Y ** 4, 'June solstice', '☀️'], [2451810.21715 + 365242.01767 * Y - 0.11575 * Y * Y + 0.00337 * Y ** 3 + 0.00078 * Y ** 4, 'September equinox', '🍂'], [2451900.05952 + 365242.74049 * Y - 0.06223 * Y * Y - 0.00823 * Y ** 3 + 0.00032 * Y ** 4, 'December solstice', '❄️']]
+      .forEach(([jde, name, emo]) => { const t = (jde - 2440587.5) * dayMs; if (t >= from && t <= to) out.push({ t, name, emoji: emo, kind: 'season', note: 'time approximate to within about 20 minutes' }); }); }
+  return out;
+}
+const SHOWERS = [['Quadrantids', '12-28', '01-12', '01-03', 110, 'Bootes'], ['Lyrids', '04-14', '04-30', '04-22', 18, 'Lyra'], ['Eta Aquariids', '04-19', '05-28', '05-06', 50, 'Aquarius'], ['Southern Delta Aquariids', '07-12', '08-23', '07-30', 25, 'Aquarius'], ['Perseids', '07-17', '08-24', '08-12', 100, 'Perseus'], ['Draconids', '10-06', '10-10', '10-08', 10, 'Draco'], ['Orionids', '10-02', '11-07', '10-21', 20, 'Orion'], ['Southern Taurids', '09-10', '11-20', '11-05', 5, 'Taurus'], ['Northern Taurids', '10-20', '12-10', '11-12', 5, 'Taurus'], ['Leonids', '11-06', '11-30', '11-17', 15, 'Leo'], ['Geminids', '12-04', '12-17', '12-14', 150, 'Gemini'], ['Ursids', '12-17', '12-26', '12-22', 10, 'Ursa Minor']];
+const ECLIPSES = [['2026-08-12', 'Total solar eclipse', 'Arctic, Greenland, Iceland and Spain; partial across Europe, North Africa and northeastern North America'], ['2026-08-28', 'Partial lunar eclipse', 'Americas, Europe, Africa and western Asia'], ['2027-02-06', 'Annular solar eclipse', 'Chile, Argentina and the South Atlantic; partial across South America and West Africa'], ['2027-02-20', 'Penumbral lunar eclipse', 'Americas, Europe, Africa and Asia'], ['2027-07-18', 'Penumbral lunar eclipse', 'Africa, Asia and Australia'], ['2027-08-02', 'Total solar eclipse', 'Spain, North Africa and the Arabian Peninsula; partial across Europe, Africa and Asia'], ['2027-08-17', 'Penumbral lunar eclipse', 'Pacific and the Americas'], ['2028-01-12', 'Partial lunar eclipse', 'Americas, Europe and Africa'], ['2028-01-26', 'Annular solar eclipse', 'Ecuador, Peru, Brazil, Spain and Portugal'], ['2028-07-06', 'Partial lunar eclipse', 'Europe, Africa, Asia and Australia'], ['2028-07-22', 'Total solar eclipse', 'Australia and New Zealand']];
+function skyCalendar(lat, lon, tz) {
+  const key = `${lat.toFixed(3)},${lon.toFixed(3)},${new Date().toISOString().slice(0, 13)}`;
+  if (skyState.calCache.key === key) return skyState.calCache.val;
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: tz });
+  const days = [];
+  for (let i = 0; i < 10; i++) {
+    const t0 = localMidnight(today, tz) + i * dayMs, date = new Date(t0 + 12 * HOUR).toLocaleDateString('en-CA', { timeZone: tz });
+    const noon = t0 + 12 * HOUR, sun = sunTimes(noon, lat, lon), moon = moonTimes(t0, lat, lon), ill = moonIllum(t0 + 12 * HOUR);
+    const evening = sun ? sun.sunset + 75 * 60e3 : null, morning = sun ? sun.sunrise - 75 * 60e3 : null;
+    const moonEve = evening ? moonAlt(evening, lat, lon) * DEG : null;
+    const events = [];
+    const mmdd = date.slice(5);
+    SHOWERS.forEach(([n, a, b, peak, zhr, radiant]) => { const active = a <= b ? (mmdd >= a && mmdd <= b) : (mmdd >= a || mmdd <= b); if (mmdd === peak) events.push({ kind: 'shower', name: `${n} peak`, note: `up to ${zhr}/h under a dark sky, radiant in ${radiant}${ill.fraction > 0.6 ? '; bright moon will wash out fainter meteors' : ''}`, emoji: '☄️' }); else if (active && i === 0) events.push({ kind: 'shower', name: `${n} active`, note: `peak ${peak.replace('-', '/')}, up to ${zhr}/h`, emoji: '☄️' }); });
+    ECLIPSES.forEach(([d, n, where]) => { if (d === date) events.push({ kind: 'eclipse', name: n, note: `visible from ${where}`, emoji: n.includes('solar') ? '🌞' : '🌘' }); });
+    // conjunctions at 21:00 local and 05:00 local
+    [[t0 + 21 * HOUR, 'evening'], [t0 + 5 * HOUR, 'before dawn']].forEach(([tt, when]) => {
+      const d = jdays(tt), m = moonCoords(d), pl = PLANET_NAMES.map(n => ({ n, c: planetRaDec(n, tt) }));
+      pl.forEach(p => { const sep = angSep(m, p.c) * DEG; if (sep < 5 && altAz(p.c.ra, p.c.dec, d, lat, lon).alt > 0) events.push({ kind: 'conj', name: `Moon near ${p.n}`, note: `${sep.toFixed(1)}° apart in the ${when} sky`, emoji: '🌙' }); });
+      for (let a = 0; a < pl.length; a++) for (let b = a + 1; b < pl.length; b++) { const sep = angSep(pl[a].c, pl[b].c) * DEG; if (sep < 2.5 && altAz(pl[a].c.ra, pl[a].c.dec, d, lat, lon).alt > 0) events.push({ kind: 'conj', name: `${pl[a].n} near ${pl[b].n}`, note: `${sep.toFixed(1)}° apart in the ${when} sky`, emoji: '✨' }); }
+    });
+    days.push({ i, date, t0, sun, moon, ill, phase: phaseName(ill.phase), evening, morning, eveningPlanets: evening ? planetsUp(evening, lat, lon) : [], morningPlanets: morning ? planetsUp(morning, lat, lon) : [], moonUpEvening: moonEve != null && moonEve > 0, events });
+  }
+  const from = days[0].t0, to = days[9].t0 + dayMs;
+  const dated = [...phaseEvents(from, to), ...seasonEvents(from, to)];
+  dated.forEach(e => { const dt = new Date(e.t).toLocaleDateString('en-CA', { timeZone: tz }); const dy = days.find(x => x.date === dt); if (dy) dy.events.unshift({ ...e, note: `${fmtTime(e.t, tz)}${e.note ? ' · ' + e.note : ''}` }); });
+  // dedupe conjunction repeats within a day
+  days.forEach(dy => { const seen = new Set(); dy.events = dy.events.filter(e => { const k = e.kind + e.name; if (seen.has(k)) return false; seen.add(k); return true; }); });
+  const val = { days, from, to };
+  skyState.calCache = { key, val };
+  return val;
+}
+// --- satellites
+function satLook(satrec, obs, t) {
+  const date = new Date(t), pv = satellite.propagate(satrec, date); if (!pv || !pv.position) return null;
+  const gmst = satellite.gstime(date), ecf = satellite.eciToEcf(pv.position, gmst), la = satellite.ecfToLookAngles(obs, ecf);
+  const d = jdays(t), s = sunCoords(d), su = [Math.cos(s.dec) * Math.cos(s.ra), Math.cos(s.dec) * Math.sin(s.ra), Math.sin(s.dec)], p = pv.position;
+  const dot = p.x * su[0] + p.y * su[1] + p.z * su[2], perp = Math.sqrt(Math.max(0, p.x * p.x + p.y * p.y + p.z * p.z - dot * dot));
+  return { el: la.elevation, az: la.azimuth, range: la.rangeSat, sunlit: !(dot < 0 && perp < 6371), sunAlt: altAz(s.ra, s.dec, d, obs.latitude * DEG, obs.longitude * DEG).alt };
+}
+function satGeo(satrec, t) { const date = new Date(t), pv = satellite.propagate(satrec, date); if (!pv || !pv.position) return null; const gmst = satellite.gstime(date), g = satellite.eciToGeodetic(pv.position, gmst); const v = pv.velocity; return { lat: g.latitude * DEG, lon: ((g.longitude * DEG + 540) % 360) - 180, alt: g.height, speed: v ? Math.hypot(v.x, v.y, v.z) : null }; }
+function computePasses(satrec, lat, lon, from, to, onDone) {
+  const obs = { longitude: rad * lon, latitude: rad * lat, height: 0.05 }, passes = []; let cur = null, t = from; const step = 20e3;
+  const finish = c => { if (c.max.el < rad * 10) return; const vis = c.pts.filter(([, p]) => p.sunlit && p.sunAlt < -6 * rad); c.visible = vis.length > 0; if (c.visible) { c.visStart = vis[0][0]; c.visEnd = vis[vis.length - 1][0]; c.visMax = vis.reduce((a, x) => x[1].el > a[1].el ? x : a, vis[0]); if (c.visMax[1].el < rad * 10 || c.visEnd - c.visStart < 60e3) c.visible = false; } c.pts = null; passes.push(c); };
+  const chunk = () => {
+    const end = Math.min(to, t + dayMs);
+    for (; t <= end; t += step) {
+      const p = satLook(satrec, obs, t); if (!p) continue;
+      if (p.el > 0) { if (!cur) cur = { start: t, startAz: p.az, max: p, maxT: t, pts: [] }; if (p.el > cur.max.el) { cur.max = p; cur.maxT = t; } cur.pts.push([t, p]); }
+      else if (cur) { cur.end = t; cur.endAz = p.az; finish(cur); cur = null; }
+    }
+    if (t < to) setTimeout(chunk, 0); else onDone(passes);
+  };
+  chunk();
+}
+const compass8 = az => ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(((az * DEG) % 360) / 45) % 8];
+function nightPolygon(t) { const d = jdays(t), s = sunCoords(d), sunLon = (((s.ra - sidereal(d, 0)) * DEG % 360) + 540) % 360 - 180, pts = []; for (let lon = -180; lon <= 180; lon += 3) pts.push([Math.atan(-Math.cos(rad * (lon - sunLon)) / Math.tan(s.dec)) * DEG, lon]); const pole = s.dec > 0 ? -89.9 : 89.9; pts.push([pole, 180], [pole, -180]); return pts; }
+function viewSky(d) {
+  const tz = d.tz, lat = state.lat, lon = state.lon;
+  const gen = ++skyState.gen; if (skyState.timer) { clearInterval(skyState.timer); skyState.timer = null; }
+  const mapHost = el('div', { class: 'map skymap', id: 'skymap' });
+  const satTable = el('div', { class: 'chartwrap' }, el('p', { class: 'note' }, 'Loading orbital elements…'));
+  const passBox = el('div', {}, el('p', { class: 'note' }, 'Loading orbital elements…'));
+  const cal = skyCalendar(lat, lon, tz);
+  const today = cal.days[0];
+  const planetWords = list => list.length ? list.map(p => `${PLANET_EMOJI[p.name]} ${p.name} (${compass8(p.az * rad)}, ${Math.round(p.alt)}° up)`).join(' · ') : 'none above the horizon';
+  const tonight = section('Tonight’s sky', el('div', { class: 'tiles' },
+    tile('Moon', `${today.phase[2]} ${Math.round(today.ill.fraction * 100)}%`, today.phase[1]),
+    tile('Moonrise', today.moon.rise ? fmtTime(today.moon.rise, tz) : today.moon.alwaysUp ? 'up all day' : '–', today.moon.set ? `sets ${fmtTime(today.moon.set, tz)}` : today.moon.alwaysDown ? 'below horizon' : null),
+    tile('Sunset', today.sun ? fmtTime(today.sun.sunset, tz) : '–', today.sun ? `dark enough by ${fmtTime(today.sun.sunset + 75 * 60e3, tz)}` : null),
+    tile('Sunrise', today.sun ? fmtTime(today.sun.sunrise, tz) : '–', today.sun ? `day length ${((today.sun.sunset - today.sun.sunrise) / HOUR).toFixed(1)} h` : null)),
+    el('div', { class: 'words', style: 'margin-top:10px' },
+      el('div', {}, el('b', {}, 'Evening planets'), planetWords(today.eveningPlanets), el('div', { class: 'note' }, today.evening ? `about ${fmtTime(today.evening, tz)}` : '')),
+      el('div', {}, el('b', {}, 'Morning planets'), planetWords(today.morningPlanets), el('div', { class: 'note' }, today.morning ? `about ${fmtTime(today.morning, tz)}` : '')),
+      el('div', {}, el('b', {}, 'Events today'), today.events.length ? today.events.map(e => el('div', {}, `${e.emoji} ${e.name}`, el('span', { class: 'note' }, ` · ${e.note}`))) : 'nothing notable')));
+  const calRows = cal.days.map(dy => el('tr', {},
+    el('td', {}, el('b', {}, dayName(dy.date, dy.i)), el('div', { class: 'note' }, dayMD(dy.date))),
+    el('td', {}, dy.sun ? `${fmtTime(dy.sun.sunrise, tz)} / ${fmtTime(dy.sun.sunset, tz)}` : '–'),
+    el('td', {}, dy.moon.rise ? fmtTime(dy.moon.rise, tz) : '–', ' / ', dy.moon.set ? fmtTime(dy.moon.set, tz) : '–'),
+    el('td', {}, `${dy.phase[2]} ${Math.round(dy.ill.fraction * 100)}%`),
+    el('td', { style: 'white-space:normal;min-width:180px' }, dy.eveningPlanets.length ? dy.eveningPlanets.map(p => `${p.name} ${compass8(p.az * rad)}`).join(', ') : el('span', { class: 'empty' }, 'none')),
+    el('td', { style: 'white-space:normal;min-width:180px' }, dy.morningPlanets.length ? dy.morningPlanets.map(p => `${p.name} ${compass8(p.az * rad)}`).join(', ') : el('span', { class: 'empty' }, 'none')),
+    el('td', { style: 'white-space:normal;min-width:220px' }, dy.events.length ? dy.events.map(e => el('div', {}, `${e.emoji} ${e.name}`, el('div', { class: 'note' }, e.note))) : el('span', { class: 'empty' }, '–'))));
+  const calendar = section('Sky calendar, next 10 days', el('p', { class: 'lede' }, 'Sun and moon times, moon phase, planets above 8° about 75 minutes after sunset and before sunrise, and notable events. All times local to the location.'),
+    el('div', { class: 'chartwrap' }, el('table', { class: 'data' }, el('thead', {}, el('tr', {}, ['Day', 'Sunrise / sunset', 'Moonrise / set', 'Moon', 'Evening planets', 'Morning planets', 'Events'].map(h => el('th', { style: 'text-align:left' }, h)))), el('tbody', {}, calRows))),
+    el('p', { class: 'note', style: 'margin-top:8px' }, 'Positions are computed in the page from standard low-precision formulas (accurate to a fraction of a degree). Meteor shower dates are the usual annual peaks; eclipse dates are from the published 2026–2028 canon. Satellite passes below use current CelesTrak orbital elements.'));
+  const satSec = section('Satellites over Earth now', el('p', { class: 'lede' }, 'Live positions from current orbital elements, updated every two seconds. The shaded area is night; the circle is the selected satellite’s horizon footprint. Click a row to track that satellite.'),
+    mapHost, satTable);
+  const passSec = section(`Passes over ${state.label || 'this location'}, next 10 days`, el('p', { class: 'lede' }, 'A pass is visible to the naked eye when the sky is dark where you stand and the satellite is still lit by the sun. The ISS is the brightest; Tiangong and Hubble are fainter.'),
+    el('div', { class: 'mapctl' }, el('label', { class: 'chk' }, el('input', { type: 'checkbox', checked: skyState.visibleOnly || null, onchange: e => { skyState.visibleOnly = e.target.checked; renderPasses(); } }), 'Visible passes only')), passBox);
+  const renderPasses = () => {
+    passBox.innerHTML = '';
+    const all = []; SATS.filter(s => s.pass).forEach(s => (skyState.passes[s.id] || []).forEach(p => all.push({ ...p, sat: s })));
+    const list = all.filter(p => !skyState.visibleOnly || p.visible).sort((a, b) => a.start - b.start);
+    const pending = SATS.filter(s => s.pass && skyState.passes[s.id] == null && skyState.tles && skyState.tles[s.id]);
+    if (pending.length) passBox.append(el('p', { class: 'note' }, `Computing passes for ${pending.map(s => s.name).join(', ')}…`));
+    if (!list.length && !pending.length) { passBox.append(el('p', { class: 'empty' }, skyState.visibleOnly ? 'No naked-eye passes in the next 10 days. Untick the box to see daylight and shadowed passes.' : 'No passes above 10° in the next 10 days.')); return; }
+    if (!list.length) return;
+    passBox.append(el('div', { class: 'chartwrap' }, el('table', { class: 'data narrow' },
+      el('thead', {}, el('tr', {}, ['Satellite', 'Date', 'Appears', 'Highest', 'Disappears', 'Max elevation', 'Duration', 'Visibility'].map(h => el('th', { style: 'text-align:left' }, h)))),
+      el('tbody', {}, list.map(p => { const s = p.visible ? p.visStart : p.start, e = p.visible ? p.visEnd : p.end, mx = p.visible ? p.visMax[1] : p.max, mxT = p.visible ? p.visMax[0] : p.maxT;
+        return el('tr', { class: p.visible ? '' : 'night' }, el('td', {}, `${p.sat.emoji} ${p.sat.name}`), el('td', {}, fmtDT(s, tz).split(' ')[0] + ' ' + dayMD(new Date(s).toLocaleDateString('en-CA', { timeZone: tz }))), el('td', {}, `${fmtTime(s, tz)} ${compass8(p.startAz)}`), el('td', {}, `${fmtTime(mxT, tz)} ${compass8(mx.az)}`), el('td', {}, `${fmtTime(e, tz)} ${compass8(p.endAz)}`), el('td', {}, `${Math.round(mx.el * DEG)}°`), el('td', {}, `${Math.round((e - s) / 60e3)} min`), el('td', {}, p.visible ? el('b', { style: 'color:var(--accent)' }, 'Naked eye') : (p.max.sunAlt > -6 * rad ? 'Daylight' : 'In Earth’s shadow'))); })))));
+  };
+  Promise.all([ensureLeaflet(), ensureScript('https://cdnjs.cloudflare.com/ajax/libs/satellite.js/5.0.0/satellite.min.js'), skyState.tles ? Promise.resolve(skyState.tles) : fetchTLEs()]).then(([, , tles]) => {
+    if (gen !== skyState.gen || !mapHost.isConnected) return;
+    skyState.tles = tles;
+    const recs = {}; SATS.forEach(s => { if (tles[s.id]) recs[s.id] = satellite.twoline2satrec(tles[s.id].l1, tles[s.id].l2); });
+    if (!Object.keys(recs).length) { satTable.innerHTML = ''; satTable.append(el('p', { class: 'err' }, 'Could not load orbital elements from CelesTrak. Try again in a few minutes.')); passBox.innerHTML = ''; return; }
+    // map
+    if (skyState.map) { try { skyState.map.remove(); } catch (e) { } }
+    const dark = document.documentElement.getAttribute('data-theme') !== 'light';
+    const map = L.map(mapHost, { worldCopyJump: true, minZoom: 1, maxZoom: 8, zoomControl: true, attributionControl: true }).setView([lat, lon], 2);
+    skyState.map = map;
+    map.createPane('base'); map.getPane('base').style.zIndex = 200; if (dark) map.getPane('base').style.filter = 'invert(1) hue-rotate(180deg) brightness(0.8) contrast(0.9) saturate(0.5)';
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, pane: 'base', attribution: '© OpenStreetMap contributors · orbits: CelesTrak' }).addTo(map);
+    let night = L.polygon(nightPolygon(Date.now()), { stroke: false, fillColor: '#000', fillOpacity: dark ? 0.45 : 0.25, interactive: false }).addTo(map);
+    L.circleMarker([lat, lon], { radius: 6, color: '#fff', weight: 2, fillColor: '#f5b83d', fillOpacity: 1 }).addTo(map).bindTooltip(state.label || 'You');
+    const markers = {}, obs = { longitude: rad * lon, latitude: rad * lat, height: 0.05 };
+    SATS.forEach(s => { if (!recs[s.id]) return; markers[s.id] = L.marker([0, 0], { icon: L.divIcon({ className: 'satmark', html: `<span>${s.emoji}</span><i>${s.name}</i>`, iconSize: [90, 24], iconAnchor: [12, 12] }) }).addTo(map).on('click', () => { skyState.selected = s.id; tick(true); }); });
+    let track = null, foot = null, lastNight = Date.now();
+    const rowsEl = el('tbody');
+    satTable.innerHTML = ''; satTable.append(el('table', { class: 'data narrow' }, el('thead', {}, el('tr', {}, ['Satellite', 'Over', 'Altitude', 'Speed', 'From you', 'Next visible pass'].map(h => el('th', { style: 'text-align:left' }, h)))), rowsEl));
+    const tick = force => {
+      if (gen !== skyState.gen) { clearInterval(skyState.timer); return; }
+      const now = Date.now(); rowsEl.innerHTML = '';
+      SATS.forEach(s => {
+        const r = recs[s.id]; if (!r) return; const g = satGeo(r, now); if (!g) return; markers[s.id].setLatLng([g.lat, g.lon]);
+        const lk = satLook(r, obs, now); const next = (skyState.passes[s.id] || []).find(p => p.visible && p.visEnd > now);
+        rowsEl.append(el('tr', { style: 'cursor:pointer' + (skyState.selected === s.id ? ';outline:1px solid var(--accent)' : ''), onclick: () => { skyState.selected = s.id; tick(true); } },
+          el('td', {}, `${s.emoji} ${s.name}`, el('div', { class: 'note' }, s.about)), el('td', {}, `${Math.abs(g.lat).toFixed(1)}°${g.lat >= 0 ? 'N' : 'S'} ${Math.abs(g.lon).toFixed(1)}°${g.lon >= 0 ? 'E' : 'W'}`), el('td', {}, US() ? `${Math.round(g.alt * 0.621371).toLocaleString()} mi` : `${Math.round(g.alt).toLocaleString()} km`), el('td', {}, g.speed ? (US() ? `${(g.speed * 2236.94).toLocaleString(undefined, { maximumFractionDigits: 0 })} mph` : `${g.speed.toFixed(2)} km/s`) : '–'),
+          el('td', {}, lk && lk.el > 0 ? el('b', { style: 'color:var(--accent)' }, `Above horizon · ${Math.round(lk.el * DEG)}° ${compass8(lk.az)}`) : 'Below horizon'), el('td', {}, next ? `${fmtDT(next.visStart, tz)} · ${Math.round(next.visMax[1].el * DEG)}° max` : s.pass ? (skyState.passes[s.id] ? 'none in 10 days' : 'computing…') : '–')));
+      });
+      if (force || now - lastNight > 60e3) { night.setLatLngs(nightPolygon(now)); lastNight = now; }
+      const sel = recs[skyState.selected] || recs[25544]; if (sel && (force || !track || now % 60e3 < 2100)) {
+        const segs = [[]]; for (let t = now - 45 * 60e3; t <= now + 95 * 60e3; t += 60e3) { const g = satGeo(sel, t); if (!g) continue; const last = segs[segs.length - 1]; if (last.length && Math.abs(g.lon - last[last.length - 1][1]) > 180) segs.push([]); segs[segs.length - 1].push([g.lat, g.lon]); }
+        if (track) track.remove(); track = L.polyline(segs, { color: '#f5b83d', weight: 2, opacity: .85, dashArray: '4 4', interactive: false }).addTo(map);
+        const g = satGeo(sel, now); if (g) { const R = 6371, rKm = R * Math.acos(R / (R + g.alt)); if (foot) foot.remove(); foot = L.circle([g.lat, g.lon], { radius: rKm * 1000, color: '#f5b83d', weight: 1, fillOpacity: .08, interactive: false }).addTo(map); }
+      }
+    };
+    tick(true); skyState.timer = setInterval(() => tick(false), 2000);
+    // passes
+    const from = Date.now(), to = from + 10 * dayMs, locKey = `${lat.toFixed(3)},${lon.toFixed(3)}`;
+    if (skyState.passKey !== locKey) { skyState.passes = {}; skyState.passKey = locKey; }
+    renderPasses();
+    SATS.filter(s => s.pass && recs[s.id] && skyState.passes[s.id] == null).forEach(s => computePasses(recs[s.id], lat, lon, from, to, ps => { if (gen !== skyState.gen) return; skyState.passes[s.id] = ps; renderPasses(); tick(true); }));
+  }).catch(e => { satTable.innerHTML = ''; satTable.append(el('p', { class: 'err' }, e.message)); passBox.innerHTML = ''; });
+  return [tonight, satSec, passSec, calendar];
+}
+
 // ---------- map view (NOAA nowCOAST WMS + Leaflet) ----------
 const NOWCOAST = 'https://nowcoast.noaa.gov/geoserver';
 const MAP_LAYERS = [
@@ -1037,7 +1284,7 @@ $('#uSI').onclick = () => { state.units = 'si'; localStorage.setItem('wx.units',
 $('#refreshBtn').onclick = () => state.lat != null && load(state.lat, state.lon, state.label);
 addEventListener('hashchange', () => { const v = location.hash.slice(1); if (VIEWS.some(x => x[0] === v) && v !== state.view) { state.view = v; render(); } });
 document.addEventListener('keydown', e => { if (e.target.tagName === 'INPUT') return; const i = VIEWS.findIndex(v => v[0] === state.view); if (e.key === 'ArrowRight') setView(VIEWS[(i + 1) % VIEWS.length][0]); if (e.key === 'ArrowLeft') setView(VIEWS[(i - 1 + VIEWS.length) % VIEWS.length][0]); });
-setInterval(() => { if (state.lat != null && !state.loading && document.visibilityState === 'visible' && state.view !== 'map') load(state.lat, state.lon, state.label); }, 10 * 60e3);
+setInterval(() => { if (state.lat != null && !state.loading && document.visibilityState === 'visible' && state.view !== 'map' && state.view !== 'sky') load(state.lat, state.lon, state.label); }, 10 * 60e3);
 
 // ---------- boot ----------
 (function boot() {
