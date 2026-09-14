@@ -227,7 +227,7 @@ footer{margin-top:28px;font-size:13px;color:var(--muted);line-height:1.6}
 <script>
 'use strict';
 const API = 'https://api.weather.gov';
-const BUILD = '2026-09-14.4';
+const BUILD = '2026-09-14.5';
 const HOUR = 3600e3;
 const $ = s => document.querySelector(s);
 function el(tag, attrs = {}, ...kids) {
@@ -253,7 +253,7 @@ function sv(tag, attrs = {}, ...kids) {
 
 // ---------- state ----------
 const VIEWS = [
-  ['overview', 'Overview'], ['map', 'Map'], ['tenday', '10-day'], ['sky', 'Sky & satellites'], ['temperature', 'Temperature'], ['rain', 'Rain'], ['clouds', 'Clouds & sky'], ['wind', 'Wind'],
+  ['overview', 'Overview'], ['map', 'Map'], ['tenday', '10-day'], ['temperature', 'Temperature'], ['rain', 'Rain'], ['clouds', 'Clouds & sky'], ['wind', 'Wind'],
   ['storms', 'Storms & lightning'], ['snow', 'Snow & ice'], ['fire', 'Fire weather'], ['alerts', 'Alerts'], ['table', 'Data table']
 ];
 const state = {
@@ -1329,7 +1329,7 @@ $('#uSI').onclick = () => { state.units = 'si'; localStorage.setItem('wx.units',
 $('#refreshBtn').onclick = () => state.lat != null && load(state.lat, state.lon, state.label);
 addEventListener('hashchange', () => { const v = location.hash.slice(1); if (VIEWS.some(x => x[0] === v) && v !== state.view) { state.view = v; render(); } });
 document.addEventListener('keydown', e => { if (e.target.tagName === 'INPUT') return; const i = VIEWS.findIndex(v => v[0] === state.view); if (e.key === 'ArrowRight') setView(VIEWS[(i + 1) % VIEWS.length][0]); if (e.key === 'ArrowLeft') setView(VIEWS[(i - 1 + VIEWS.length) % VIEWS.length][0]); });
-setInterval(() => { if (state.lat != null && !state.loading && document.visibilityState === 'visible' && state.view !== 'map' && state.view !== 'sky') load(state.lat, state.lon, state.label); }, 10 * 60e3);
+setInterval(() => { if (state.lat != null && !state.loading && document.visibilityState === 'visible' && state.view !== 'map' && state.view !== 'overview') load(state.lat, state.lon, state.label); }, 10 * 60e3);
 
 // ---------- boot ----------
 (function boot() {
