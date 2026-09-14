@@ -455,8 +455,18 @@ viewof live = Inputs.toggle({label: "4 · Live satellite tracking", value: false
 <!--{"pinCode":false,"dname":"wc-layout-buttons","codeMode":"js","hide":false}-->
 ```js
 {
-  const timeline = await Button("Timeline layout", async () => { const g = window.__wcGlobe; if (g) g.hide(); gxr.nodes().pinned(false); await gxr.parametric({ x: { property: "hourIndex", range: [0, 12] }, y: { property: "tempF" } }); await gxr.sleep(800); await gxr.flyToCenter(); });
-  const force = await Button("Force layout", async () => { gxr.nodes().pinned(false); gxr.forceLayout(); await gxr.sleep(1200); await gxr.flyToCenter(); });
+  const timeline = await Button("Timeline layout", async () => {
+    const g = window.__wcGlobe; if (g) g.hide(); gxr.nodes().pinned(false);
+    const place = (n, p) => gxr.nodes().filter(x => x.id === n.id).position(p);
+    const hours = gxr.nodes({ category: "Hour" }), temps = hours.map(n => +n.properties.tempF).filter(v => !isNaN(v)), tm = temps.length ? temps.reduce((a, b) => a + b, 0) / temps.length : 0;
+    hours.forEach(n => place(n, { x: (+n.properties.hourIndex - 6) * 0.45, y: 1.2 + ((+n.properties.tempF || tm) - tm) * 0.06, z: 0 }));
+    const days = gxr.nodes({ category: "Day" }), his = days.map(n => +n.properties.hiF).filter(v => !isNaN(v)), hm = his.length ? his.reduce((a, b) => a + b, 0) / his.length : 0;
+    days.forEach(n => place(n, { x: (+n.properties.dayIndex - 4.5) * 0.6, y: -1.4 + ((+n.properties.hiF || hm) - hm) * 0.06, z: 0 }));
+    gxr.nodes({ category: "Location" }).forEach(n => place(n, { x: -3.6, y: 0, z: 0 }));
+    ["Alert", "Planet", "SkyEvent", "Satellite", "Pass"].forEach((c, ci) => gxr.nodes({ category: c }).forEach((n, i) => place(n, { x: 3.4 + ci * 0.5, y: 2 - i * 0.28, z: 0 })));
+    gxr.nodes().pinned(true); await gxr.sleep(600); await gxr.flyToCenter();
+  });
+  const force = await Button("Force layout", async () => { if (window.__wcGlobe) window.__wcGlobe.hide(); gxr.nodes().pinned(false); gxr.forceLayout(); await gxr.sleep(1200); await gxr.flyToCenter(); });
   const fit = await Button("Fit to view", async () => { await gxr.flyToCenter(); });
   const clear = await Button("Clear canvas", async () => { if (window.__wcGlobe) { window.__wcGlobe.hide(); } gxr.clear(); gxr.toast().success("Canvas cleared"); });
   const wrap = html`<div class="wc"><div class="wc-eyebrow" style="margin:14px 2px 6px">Canvas · layouts</div><div class="wc-row"></div></div>`;
