@@ -118,6 +118,8 @@ header.top{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:flex-end;justif
 [data-theme="light"] .strip .h.night{background:color-mix(in srgb,var(--surface2),var(--tardis) 8%)}
 .strip .h .t{color:var(--muted);font-size:12px}
 .strip .h img{width:40px;height:40px;border-radius:8px;margin:4px 0}
+.strip .h .emo{font-size:28px;line-height:40px;height:40px;margin:4px 0}
+.now .bigemo{width:72px;height:72px;border-radius:12px;background:var(--surface2);box-shadow:0 0 0 1px var(--line);font-size:44px;line-height:72px;text-align:center}
 .strip .h .tp{font-weight:700;font-size:16px}
 .strip .h .pp{color:var(--s-blue);font-size:12px}
 .strip .h .wd{color:var(--text2);font-size:12px}
@@ -218,7 +220,7 @@ footer{margin-top:28px;font-size:13px;color:var(--muted);line-height:1.6}
     </div>
     <div class="controls">
       <form id="searchForm" style="display:flex;gap:6px">
-        <input type="text" id="q" placeholder="City, ZIP, or lat,lon (US only)" aria-label="Search location">
+        <input type="text" id="q" placeholder="City, postal code, or lat,lon · US, Canada, Mexico, Brazil" aria-label="Search location">
         <button class="btn" type="submit">Go</button>
       </form>
       <button class="btn" id="geoBtn" title="Use my location">📍 My location</button>
@@ -243,7 +245,7 @@ footer{margin-top:28px;font-size:13px;color:var(--muted);line-height:1.6}
 <script>
 'use strict';
 const API = 'https://api.weather.gov';
-const BUILD = '2026-09-22.2';
+const BUILD = '2026-09-22.3';
 const HOUR = 3600e3;
 const $ = s => document.querySelector(s);
 function el(tag, attrs = {}, ...kids) {
@@ -362,7 +364,10 @@ const DEFAULT_LOC = { lat: 40.7141, lon: -74.0744, label: 'Jersey City, NJ 07304
 async function load(lat, lon, label, remember) {
   state.loading = true; state.error = null; state.lat = lat; state.lon = lon; state.label = label || null; render();
   try {
-    const pts = await nws(`${API}/points/${lat.toFixed(4)},${lon.toFixed(4)}`);
+    let pts = null;
+    try { pts = await nws(`${API}/points/${lat.toFixed(4)},${lon.toFixed(4)}`); } catch (e) { if (!/404|Unable to provide data/i.test(e.message)) throw e; }
+    if (!pts) state.data = await loadIntl(lat, lon);
+    else {
     const p = pts.properties;
     const [grid, hourly, stations, alerts, dailyNws, om, omH, aq] = await Promise.all([
       nws(p.forecastGridData),
@@ -384,10 +389,11 @@ async function load(lat, lon, label, remember) {
       }
     }
     state.data = assemble({ pts: p, grid: grid.properties, hourly: hourly && hourly.properties, obs, alerts: alerts.features || [], lat, lon, dailyNws: dailyNws && dailyNws.properties, om, omH, aq });
+    }
     state.updated = Date.now();
     if (remember) localStorage.setItem('wx.loc2', JSON.stringify({ lat, lon, label: state.label }));
   } catch (e) {
-    state.error = /404|Unable to provide data/i.test(e.message) ? 'The National Weather Service has no forecast for this point. Coverage is limited to the United States and its territories.' : `Could not load weather data (${e.message}).`;
+    state.error = `Could not load a forecast for this point (${e.message}). The NWS covers the United States; Open-Meteo covers everywhere else.`;
   }
   state.loading = false; render();
 }
@@ -539,7 +545,7 @@ function renderHeader() {
   else if (d) {
     const rl = d.pts.relativeLocation && d.pts.relativeLocation.properties;
     ll.innerHTML = '';
-    ll.append(el('b', {}, state.label || (rl ? `${rl.city}, ${rl.state}` : 'Selected point')), ` · ${state.lat.toFixed(3)}, ${state.lon.toFixed(3)} · ${d.pts.gridId} grid ${d.pts.gridX},${d.pts.gridY}`);
+    ll.append(el('b', {}, state.label || (rl ? `${rl.city}, ${rl.state}` : 'Selected point')), ` · ${state.lat.toFixed(3)}, ${state.lon.toFixed(3)} · ${d.intl ? `Open-Meteo forecast · ${d.intl.name} is outside NWS coverage` : `${d.pts.gridId} grid ${d.pts.gridX},${d.pts.gridY}`}`);
     if (state.loading) ll.append(' · refreshing…');
   }
   $('#uUS').setAttribute('aria-pressed', US()); $('#uSI').setAttribute('aria-pressed', !US());
@@ -570,10 +576,10 @@ function renderNow(d) {
   const kv = (k, v, s) => el('div', {}, el('div', { class: 'k' }, k), el('div', { class: 'v' }, v, s ? el('small', {}, ' ', s) : null));
   const card = el('section', { class: 'card now', 'data-container': 'Now card' },
     el('div', {},
-      el('div', { class: 'big' }, r0.icon ? el('img', { src: r0.icon, alt: '' }) : null,
+      el('div', { class: 'big' }, r0.icon ? el('img', { src: r0.icon, alt: '' }) : r0.emoji ? el('div', { class: 'bigemo' }, r0.emoji) : null,
         el('div', {}, el('div', { class: 'temp' }, fmtT(temp)), el('div', { class: 'cond' }, cond), el('div', { class: 'feels' }, `Feels like ${fmtT(feels)}`))),
       el('div', { class: 'note', style: 'margin-top:12px' },
-        o ? `Observed ${fmtTime(Date.parse(o.timestamp), tz)} at ${o.stationName} (${o.stationId})` : 'No recent station observation; showing the forecast for this hour',
+        o ? (o.model ? `Model analysis for ${fmtTime(Date.parse(o.timestamp), tz)} (Open-Meteo; no station observation here)` : `Observed ${fmtTime(Date.parse(o.timestamp), tz)} at ${o.stationName} (${o.stationId})`) : 'No recent station observation; showing the forecast for this hour',
         d.sun ? el('div', {}, `Sunrise ${fmtTime(d.sun.sunrise, tz)} · Sunset ${fmtTime(d.sun.sunset, tz)}`) : null)),
     el('div', { class: 'kv' },
       kv('Wind', el('span', {}, compass, `${dirName(wdir)} ${fmtSpd(wspd)}`), gust != null ? `gusts ${fmtSpd(gust)}` : null),
@@ -608,7 +614,7 @@ function viewFlags(d) {
 }
 function renderFooter(d) {
   const f = $('#foot'); f.innerHTML = '';
-  f.append(el('div', {}, 'Data: ', el('a', { href: 'https://www.weather.gov/documentation/services-web-api', target: '_blank', rel: 'noopener' }, 'National Weather Service API'), d ? ` · forecast office ${d.pts.gridId} · grid updated ${fmtDT(Date.parse(d.grid.updateTime), d.tz)} · hourly values are sampled from the NWS gridded forecast; 6-hour precipitation and snow totals are spread evenly across their hours.` : ''));
+  f.append(el('div', {}, 'Data: ', el('a', { href: 'https://www.weather.gov/documentation/services-web-api', target: '_blank', rel: 'noopener' }, 'National Weather Service API'), d ? (d.intl ? ` · this point is outside NWS coverage, so the forecast is the Open-Meteo model blend (${d.intl.agency} is the official source) · hourly values sampled at the top of each hour.` : ` · forecast office ${d.pts.gridId} · grid updated ${fmtDT(Date.parse(d.grid.updateTime), d.tz)} · hourly values are sampled from the NWS gridded forecast; 6-hour precipitation and snow totals are spread evenly across their hours.`) : ''));
   if (state.updated) f.append(el('div', {}, `Page refreshed ${new Date(state.updated).toLocaleTimeString()} · auto-refreshes every 10 minutes · night hours are shaded on charts.`));
   if (state.geoNote) f.append(el('div', {}, state.geoNote));
   f.append(el('div', {}, el('a', { href: 'https://github.com/rockyjonez/weather-now', target: '_blank', rel: 'noopener' }, 'Source on GitHub'), ' · Styling is a fan tribute to a certain blue box; not affiliated with the BBC.', ` · build ${BUILD}`));
@@ -622,7 +628,7 @@ function wordsRow(d, get, label) {
   return items.length ? el('div', {}, el('h3', {}, label), el('div', { class: 'words' }, items)) : el('p', { class: 'empty' }, `No ${label.toLowerCase()} in the next 12 hours.`);
 }
 function alertCards(list, emptyText) {
-  if (!list.length) return el('p', { class: 'empty' }, emptyText || 'No active alerts.');
+  if (!list.length) return el('p', { class: 'empty' }, state.data && state.data.intl ? `Official warnings are not read outside the US yet; ${state.data.intl.agency} publishes them.` : emptyText || 'No active alerts.');
   return list.map(a => el('article', { class: `card alert ${a.severity}` },
     el('h4', {}, a.event),
     el('div', { class: 'meta' }, `${a.severity} · ${a.urgency} · ${a.certainty} · ${a.senderName}`, a.ends || a.expires ? ` · until ${new Date(a.ends || a.expires).toLocaleString()}` : ''),
@@ -647,7 +653,7 @@ function viewOverview(d) {
   const qpf = sum(R, 'quantitativePrecipitation'), snow = sum(R, 'snowfallAmount'), fire = fireStatus(d);
   const strip = el('div', { class: 'strip', 'data-container': 'Hourly strip' }, R.map(r => el('div', { class: 'h' + (r.night ? ' night' : ''), title: r.cond },
     el('div', { class: 't' }, r.i === 0 ? 'Now' : fmtHour(r.t, tz)),
-    r.icon ? el('img', { src: r.icon, alt: r.cond }) : el('div', { style: 'height:40px;margin:4px 0;font-size:11px;color:var(--text2);display:flex;align-items:center;justify-content:center' }, r.cond),
+    r.icon ? el('img', { src: r.icon, alt: r.cond }) : r.emoji ? el('div', { class: 'emo', title: r.cond }, r.emoji) : el('div', { style: 'height:40px;margin:4px 0;font-size:11px;color:var(--text2);display:flex;align-items:center;justify-content:center' }, r.cond),
     el('div', { class: 'tp' }, fmtT(r.temperature)),
     el('div', { class: 'pp' }, r.probabilityOfPrecipitation ? `💧 ${fmtPct(r.probabilityOfPrecipitation)}` : ' '),
     el('div', { class: 'wd' }, `${dirName(r.windDirection)} ${r.windSpeed == null ? '' : Math.round(valSpd(r.windSpeed))}`))));
@@ -800,7 +806,7 @@ function viewFire(d) {
 function viewAlerts(d) {
   const hz = hazardList(d);
   return [
-    section(`Active alerts (${d.alerts.length})`, el('p', { class: 'lede' }, 'All National Weather Service alerts whose area contains this point, most severe first.'), alertCards(d.alerts)),
+    d.intl ? section('Active alerts', el('p', { class: 'lede' }, `Official warnings for ${d.intl.name} come from ${d.intl.agency}. This page cannot read them yet.`), d.intl.alerts ? el('p', {}, el('a', { class: 'btn', href: d.intl.alerts, target: '_blank', rel: 'noopener' }, `Open ${d.intl.agency} warnings`)) : null) : section(`Active alerts (${d.alerts.length})`, el('p', { class: 'lede' }, 'All National Weather Service alerts whose area contains this point, most severe first.'), alertCards(d.alerts)),
     hz ? section('Gridded hazards, next 12 hours', el('p', { class: 'note' }, 'Hazard flags carried in the forecast grid itself; these can lead or lag the formal alerts above.'), hz) : null
   ];
 }
@@ -1265,6 +1271,7 @@ function healthSection(d) {
 const NESDIS_CDN = 'https://cdn.star.nesdis.noaa.gov';
 const NESDIS_PRODUCTS = [['GEOCOLOR', 'GeoColor', 'True colour by day, infrared with city lights at night.'], ['13', 'Clean infrared', 'Band 13 cloud-top temperature: colder, higher clouds are brighter.'], ['02', 'Visible', 'Band 2 red visible, 0.5 km resolution; dark at night.'], ['08', 'Water vapor', 'Band 8 upper-level moisture and jet-stream flow.'], ['07', 'Shortwave IR', 'Band 3.9 µm: hot spots, fires and fog at night.'], ['AirMass', 'Air mass', 'RGB of water-vapor and ozone bands: cyclones, jets, dry intrusions.'], ['Sandwich', 'Sandwich', 'Visible texture blended with infrared colour for storm tops.'], ['FireTemperature', 'Fire temperature', 'RGB tuned to show active fire intensity.'], ['Dust', 'Dust', 'RGB that highlights blowing dust and volcanic ash.']];
 function nesdisSector(lat, lon) {
+  if (!((lat >= 24 && lat <= 50 && lon >= -125 && lon <= -66) || (lat < 23 && lon < -154) || (lat > 50 && lon < -130) || (lat < 19.5 && lon > -68.5 && lon < -64))) return null;
   if (lat < 23 && lon < -154) return { sat: 'GOES18', sec: 'hi', name: 'Hawaii' };
   if (lat > 50 && lon < -130) return { sat: 'GOES18', sec: 'cak', name: 'Alaska' };
   if (lat < 19.5 && lon > -68.5 && lon < -64) return { sat: 'GOES19', sec: 'pr', name: 'Puerto Rico' };
@@ -1277,8 +1284,10 @@ function nesdisSector(lat, lon) {
 const nesdisState = { region: localStorage.getItem('wx.nesdisRegion') || 'sector', product: localStorage.getItem('wx.nesdisProduct') || 'GEOCOLOR', loop: false };
 function nesdisSection() {
   const lat = state.lat, lon = state.lon, sec = nesdisSector(lat, lon);
-  const westOnly = sec.sat === 'GOES18';
-  const regions = [['sector', `${sec.name} sector`], ['conus', 'Continental US'], ['fd', 'Full disk']];
+  const westOnly = !!sec && sec.sat === 'GOES18';
+  const conusOk = lat >= 15 && lat <= 55 && lon >= -135 && lon <= -55;
+  const regions = [sec ? ['sector', `${sec.name} sector`] : null, conusOk ? ['conus', 'Continental US'] : null, ['fd', 'Full disk']].filter(Boolean);
+  if (!regions.some(r => r[0] === nesdisState.region)) nesdisState.region = 'fd';
   const wrap = el('div');
   const body = el('div', { style: 'margin-top:10px' });
   const draw = () => {
@@ -1333,6 +1342,58 @@ async function loadApod() {
     el('p', { class: 'note', style: 'margin-top:8px' }, 'NASA Astronomy Picture of the Day. ', el('a', { href: `https://apod.nasa.gov/apod/ap${data.date.slice(2).replace(/-/g, '')}.html`, target: '_blank', rel: 'noopener' }, 'Open on apod.nasa.gov'))));
 }
 
+// ---------- outside NWS coverage: Open-Meteo fallback (Canada, Mexico, Brazil and the rest of the world) ----------
+const WMO_TEXT = c => (WMO[c] || ['Unknown'])[0];
+function wmoEmoji(c, day) { if (c === 0 || c === 1) return day ? (c === 0 ? '☀️' : '🌤️') : '🌙'; if (c === 2) return day ? '⛅' : '☁️'; return (WMO[c] || ['', '🌡️'])[1]; }
+function intlRegion(lat, lon) {
+  if (lon >= -141 && lon <= -52 && lat >= 41.6 && lat <= 84) return { name: 'Canada', alerts: 'https://weather.gc.ca/warnings/index_e.html', agency: 'Environment Canada' };
+  if (lat >= 14 && lat <= 33 && lon >= -118.5 && lon <= -86.5) return { name: 'Mexico', alerts: 'https://smn.conagua.gob.mx/es/avisos', agency: 'Servicio Meteorológico Nacional (CONAGUA)' };
+  if (lat >= -34 && lat <= 6 && lon >= -74 && lon <= -34) return { name: 'Brazil', alerts: 'https://alertas2.inmet.gov.br/', agency: 'INMET' };
+  return { name: 'this area', alerts: null, agency: 'the national weather service' };
+}
+async function loadIntl(lat, lon) {
+  const q = `latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}`;
+  const [om, daily, aq] = await Promise.all([
+    fetch(`https://api.open-meteo.com/v1/forecast?${q}&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,cloud_cover,pressure_msl,wind_speed_10m,wind_direction_10m,wind_gusts_10m&hourly=temperature_2m,apparent_temperature,dew_point_2m,relative_humidity_2m,cloud_cover,precipitation_probability,precipitation,snowfall,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,visibility,cape,uv_index,is_day,freezing_level_height,pressure_msl&past_days=2&forecast_days=7&timeformat=unixtime&timezone=auto`).then(r => r.ok ? r.json() : null),
+    fetch(`https://api.open-meteo.com/v1/forecast?${q}&daily=weather_code,temperature_2m_max,temperature_2m_min,apparent_temperature_max,apparent_temperature_min,precipitation_sum,snowfall_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant,uv_index_max,sunrise,sunset&forecast_days=10&timezone=auto`).then(r => r.ok ? r.json() : null).catch(() => null),
+    fetch(`https://air-quality-api.open-meteo.com/v1/air-quality?${q}&hourly=us_aqi,pm2_5,pm10,ozone,dust,alder_pollen,birch_pollen,grass_pollen,mugwort_pollen,olive_pollen,ragweed_pollen&past_days=2&forecast_days=5&timeformat=unixtime&timezone=UTC`).then(r => r.ok ? r.json() : null).catch(() => null)
+  ]);
+  if (!om || !om.hourly) throw new Error('Open-Meteo returned no forecast for this point');
+  return assembleIntl({ om, daily, aq, lat, lon });
+}
+function assembleIntl({ om, daily, aq, lat, lon }) {
+  const tz = om.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const now = Date.now(), h0 = Math.floor(now / HOUR) * HOUR;
+  const H = om.hourly, idx = {}; H.time.forEach((t, i) => idx[t * 1000] = i);
+  const g = (k, i) => i == null || !H[k] ? null : H[k][i];
+  const rows = Array.from({ length: 13 }, (_, i) => {
+    const t = h0 + i * HOUR, j = idx[t], code = g('weather_code', j), dayFlag = g('is_day', j), day = dayFlag == null ? !isNight(t + HOUR / 2, lat, lon) : dayFlag !== 0, cape = g('cape', j) || 0;
+    const r = { t, i, night: !day, period: null, hazards: [], weather: [], icon: null,
+      temperature: g('temperature_2m', j), apparentTemperature: g('apparent_temperature', j), dewpoint: g('dew_point_2m', j), relativeHumidity: g('relative_humidity_2m', j), skyCover: g('cloud_cover', j),
+      windDirection: g('wind_direction_10m', j), windSpeed: g('wind_speed_10m', j), windGust: g('wind_gusts_10m', j), probabilityOfPrecipitation: g('precipitation_probability', j),
+      quantitativePrecipitation: g('precipitation', j), snowfallAmount: g('snowfall', j) == null ? null : g('snowfall', j) * 10, snowLevel: g('freezing_level_height', j), visibility: g('visibility', j),
+      probabilityOfThunder: code != null && code >= 95 ? 60 : cape >= 1500 ? 30 : cape >= 800 ? 15 : cape >= 300 ? 5 : 0,
+      weatherText: code == null ? '' : WMO_TEXT(code), cond: code == null ? '–' : WMO_TEXT(code), emoji: wmoEmoji(code, day), thunder: code != null && code >= 95 };
+    NUMERIC.forEach(k => { if (!(k in r)) r[k] = null; }); ACCUM.forEach(k => { if (!(k in r)) r[k] = null; });
+    return r;
+  });
+  const c = om.current || {};
+  const obs = c.temperature_2m == null ? null : { model: true, timestamp: new Date((c.time || now / 1000) * 1000).toISOString(), textDescription: WMO_TEXT(c.weather_code), temperature: { value: c.temperature_2m }, dewpoint: { value: null }, windDirection: { value: c.wind_direction_10m }, windSpeed: { value: c.wind_speed_10m }, windGust: { value: c.wind_gusts_10m }, barometricPressure: { value: c.pressure_msl == null ? null : c.pressure_msl * 100 }, visibility: { value: null }, relativeHumidity: { value: c.relative_humidity_2m }, heatIndex: { value: c.apparent_temperature }, windChill: { value: null }, stationName: 'Open-Meteo', stationId: 'model' };
+  const has = k => H[k] && H[k].some(v => v != null);
+  const layers = { temperature: has('temperature_2m'), quantitativePrecipitation: has('precipitation'), snowfallAmount: has('snowfall'), snowLevel: has('freezing_level_height'), visibility: has('visibility'), probabilityOfThunder: has('cape'), relativeHumidity: true, skyCover: true, windSpeed: true, windGust: true };
+  const pts = { gridId: 'OM', gridX: '', gridY: '', timeZone: tz, relativeLocation: null, radarStation: null };
+  return { tz, hours: rows.map(r => r.t), rows, obs, alerts: [], pts, grid: { updateTime: new Date().toISOString() }, sun: sunTimes(now, lat, lon), radar: null, layers, daily: buildDaily(null, daily, tz), health: computeHealth(om, aq, tz, lat), intl: intlRegion(lat, lon) };
+}
+const GEOMET = 'https://geo.weather.gc.ca/geomet';
+const MAP_LAYERS_INTL = [
+  { key: 'rvradar', name: 'Radar', src: 'rv', kind: 'obs', loop: 120, about: 'RainViewer global radar composite, 10-minute frames over the last two hours. Coverage follows the national radar networks.' },
+  { key: 'ecradar', name: 'Radar, Environment Canada', src: 'geomet', layer: 'RADAR_1KM_RRAI', kind: 'obs', loop: 120, about: 'Environment Canada 1 km rain-rate radar mosaic, 6-minute frames.', only: 'Canada' },
+  { key: 'ecsnow', name: 'Snow radar, Environment Canada', src: 'geomet', layer: 'RADAR_1KM_RSNO', kind: 'obs', loop: 120, about: 'Environment Canada 1 km snow-rate radar mosaic.', only: 'Canada' },
+  { key: 'lightning', name: 'Lightning', ws: 'lightning_detection', layer: 'lightning_detection:ldn_lightning_strike_density', kind: 'obs', loop: 120, about: 'Lightning strike density in 15-minute bins (Vaisala network via NOAA nowCOAST). The loop covers the last two hours.' },
+  { key: 'satellite', name: 'Clouds (satellite)', ws: 'satellite', layer: 'satellite:global_longwave_imagery_mosaic', kind: 'obs', loop: 60, about: 'Global infrared satellite mosaic: brighter means colder, higher cloud tops. Works at night.' }
+];
+const activeMapLayers = () => state.data && state.data.intl ? MAP_LAYERS_INTL.filter(l => !l.only || l.only === state.data.intl.name) : MAP_LAYERS;
+
 // ---------- map view (NOAA nowCOAST WMS + Leaflet) ----------
 const NOWCOAST = 'https://nowcoast.noaa.gov/geoserver';
 const MAP_LAYERS = [
@@ -1364,8 +1425,16 @@ function ensureLeaflet() {
   return leafletP;
 }
 async function layerTimes(def, name) {
-  const ws = def.ws;
-  if (!mapState.capsCache[ws]) mapState.capsCache[ws] = fetch(`${NOWCOAST}/${ws}/wms?service=WMS&request=GetCapabilities&version=1.3.0`).then(r => r.text()).then(t => new DOMParser().parseFromString(t, 'text/xml')).catch(() => null);
+  if (def.src === 'rv') {
+    const j = await fetch('https://api.rainviewer.com/public/weather-maps.json').then(r => r.json()).catch(() => null);
+    if (!j || !j.radar) return [];
+    mapState.rv = { host: j.host, paths: {} };
+    const fr = [...(j.radar.past || []), ...(j.radar.nowcast || [])]; fr.forEach(f => mapState.rv.paths[f.time * 1000] = f.path);
+    return fr.map(f => f.time * 1000);
+  }
+  const ws = def.src === 'geomet' ? 'geomet:' + name : def.ws;
+  const capsUrl = def.src === 'geomet' ? `${GEOMET}?service=WMS&version=1.3.0&request=GetCapabilities&layer=${name}` : `${NOWCOAST}/${def.ws}/wms?service=WMS&request=GetCapabilities&version=1.3.0`;
+  if (!mapState.capsCache[ws]) mapState.capsCache[ws] = fetch(capsUrl).then(r => r.text()).then(t => new DOMParser().parseFromString(t, 'text/xml')).catch(() => null);
   const doc = await mapState.capsCache[ws];
   if (!doc) return [];
   const short = name.split(':').pop();
@@ -1394,17 +1463,18 @@ function pickFrames(def, times) {
   return f.length ? f : times.slice(0, 3);
 }
 function viewMap(d) {
-  const def = MAP_LAYERS.find(l => l.key === mapState.key) || MAP_LAYERS[0];
+  const LIST = activeMapLayers();
+  const def = LIST.find(l => l.key === mapState.key) || LIST[0];
   const host = el('div', { class: 'map', id: 'map' });
   const status = el('div', { class: 'note', style: 'margin-top:8px' }, 'Loading map…');
-  const pills = el('div', { class: 'pills', role: 'group', 'aria-label': 'Map layer' }, MAP_LAYERS.map(l => el('button', { 'aria-pressed': l.key === def.key, onclick: () => { mapState.key = l.key; localStorage.setItem('wx.mapLayer', l.key); mapState.idx = null; render(); } }, l.name)));
+  const pills = el('div', { class: 'pills', role: 'group', 'aria-label': 'Map layer' }, LIST.map(l => el('button', { 'aria-pressed': l.key === def.key, onclick: () => { mapState.key = l.key; localStorage.setItem('wx.mapLayer', l.key); mapState.idx = null; render(); } }, l.name)));
   const alertsChk = el('label', { class: 'chk' }, el('input', { type: 'checkbox', checked: mapState.showAlerts || null, onchange: e => { mapState.showAlerts = e.target.checked; localStorage.setItem('wx.mapAlerts', e.target.checked ? '1' : '0'); render(); } }), 'Alert outlines');
   const opacity = el('label', { class: 'chk' }, 'Opacity ', el('input', { type: 'range', min: 0.2, max: 1, step: 0.05, value: mapState.opacity, oninput: e => { mapState.opacity = +e.target.value; localStorage.setItem('wx.mapOpacity', mapState.opacity); const cur = mapState.frameLayers[mapState.curKey]; if (cur) cur.setOpacity(mapState.opacity); } }));
   const timeBox = el('div', { class: 'timectl' });
   const legend = el('div', { class: 'maplegend' });
   const sec = section('Map', el('p', { class: 'lede' }, def.about),
-    el('div', { class: 'mapctl' }, pills), el('div', { class: 'mapctl' }, def.key === 'alerts' ? null : alertsChk, opacity), host, timeBox, status, legend,
-    el('p', { class: 'note', style: 'margin-top:10px' }, 'Click anywhere on the map to read the layer value there or to load the forecast for that point. Weather layers: NOAA nowCOAST. Base map: © OpenStreetMap contributors, © CARTO.'));
+    el('div', { class: 'mapctl' }, pills), el('div', { class: 'mapctl' }, def.key === 'alerts' || d.intl ? null : alertsChk, opacity), host, timeBox, status, legend,
+    el('p', { class: 'note', style: 'margin-top:10px' }, 'Click anywhere on the map to read the layer value there or to load the forecast for that point. Weather layers: NOAA nowCOAST, RainViewer and Environment Canada GeoMet. Base map: © OpenStreetMap contributors.'));
   const gen = ++mapState.gen;
   ensureLeaflet().then(() => buildMap(d, def, { host, status, timeBox, legend, gen })).catch(e => { status.textContent = e.message; });
   return [sec];
@@ -1421,23 +1491,25 @@ function buildMap(d, def, ui) {
   if (keep) map.setView(mapState.view.c, mapState.view.z); else map.setView([state.lat, state.lon], 8);
   map.createPane('base'); map.getPane('base').style.zIndex = 200; if (dark) map.getPane('base').style.filter = 'invert(1) hue-rotate(180deg) brightness(0.8) contrast(0.9) saturate(0.5)';
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, pane: 'base', attribution: '© OpenStreetMap contributors' }).addTo(map);
-  const name = layerName(def, state.lat, state.lon);
+  const name = def.layer ? layerName(def, state.lat, state.lon) : def.key;
+  const wmsUrl = def.src === 'geomet' ? GEOMET : `${NOWCOAST}/${def.ws}/wms`;
   map.createPane('wx'); map.getPane('wx').style.zIndex = 350;
   map.createPane('al'); map.getPane('al').style.zIndex = 360;
-  const wmsBase = { format: 'image/png', transparent: true, version: '1.3.0', attribution: 'NOAA nowCOAST', pane: 'wx' };
-  if (mapState.showAlerts && def.key !== 'alerts') L.tileLayer.wms(`${NOWCOAST}/alerts/wms`, { ...wmsBase, pane: 'al', layers: ALERTS_LAYER, opacity: 0.55 }).addTo(map);
+  const wmsBase = { format: 'image/png', transparent: true, version: '1.3.0', attribution: def.src === 'geomet' ? 'Environment Canada GeoMet' : def.src === 'rv' ? 'RainViewer' : 'NOAA nowCOAST', pane: 'wx' };
+  if (!d.intl && mapState.showAlerts && def.key !== 'alerts') L.tileLayer.wms(`${NOWCOAST}/alerts/wms`, { ...wmsBase, pane: 'al', layers: ALERTS_LAYER, opacity: 0.55 }).addTo(map);
   L.circleMarker([state.lat, state.lon], { radius: 7, color: '#fff', weight: 2, fillColor: '#2a78d6', fillOpacity: 1 }).addTo(map).bindTooltip(state.label || 'Selected point');
   ui.legend.innerHTML = '';
-  if (def.key !== 'alerts') ui.legend.append(el('img', { src: `${NOWCOAST}/${def.ws}/wms?service=WMS&version=1.3.0&request=GetLegendGraphic&layer=${encodeURIComponent(name)}&format=image/png&legend_options=fontName:Helvetica;fontSize:11;dpi:96;forceLabels:on`, alt: `${def.name} legend` }));
-  if (mapState.showAlerts || def.key === 'alerts') ui.legend.append(el('details', { class: 'legend-details' }, el('summary', {}, 'Alert colours'), el('img', { src: `${NOWCOAST}/alerts/wms?service=WMS&version=1.3.0&request=GetLegendGraphic&layer=${ALERTS_LAYER}&format=image/png&legend_options=fontName:Helvetica;fontSize:10;dpi:96;forceLabels:on`, alt: 'Alerts legend' })));
+  if (def.src === 'rv') ui.legend.append(el('p', { class: 'note' }, 'Colour runs from light blue (drizzle) through green and yellow to red and purple (heavy rain or hail); snow shows in blue-grey.'));
+  else if (def.src === 'geomet') ui.legend.append(el('img', { src: `${GEOMET}?service=WMS&version=1.3.0&request=GetLegendGraphic&layer=${name}&format=image/png&sld_version=1.1.0`, alt: `${def.name} legend` }));
+  else if (def.key !== 'alerts') ui.legend.append(el('img', { src: `${NOWCOAST}/${def.ws}/wms?service=WMS&version=1.3.0&request=GetLegendGraphic&layer=${encodeURIComponent(name)}&format=image/png&legend_options=fontName:Helvetica;fontSize:11;dpi:96;forceLabels:on`, alt: `${def.name} legend` }));
+  if (!d.intl && (mapState.showAlerts || def.key === 'alerts')) ui.legend.append(el('details', { class: 'legend-details' }, el('summary', {}, 'Alert colours'), el('img', { src: `${NOWCOAST}/alerts/wms?service=WMS&version=1.3.0&request=GetLegendGraphic&layer=${ALERTS_LAYER}&format=image/png&legend_options=fontName:Helvetica;fontSize:10;dpi:96;forceLabels:on`, alt: 'Alerts legend' })));
   let frames = [];
   const frameKey = t => t == null ? 'static' : String(t);
   const ensureFrame = i => {
     const t = frames[i], key = frameKey(t);
     if (!mapState.frameLayers[key]) {
-      const opts = { ...wmsBase, layers: name, opacity: 0 };
-      if (t != null) opts.time = new Date(t).toISOString();
-      mapState.frameLayers[key] = L.tileLayer.wms(`${NOWCOAST}/${def.ws}/wms`, opts).addTo(map);
+      if (def.src === 'rv' && mapState.rv && mapState.rv.paths[t]) mapState.frameLayers[key] = L.tileLayer(`${mapState.rv.host}${mapState.rv.paths[t]}/256/{z}/{x}/{y}/2/1_1.png`, { opacity: 0, pane: 'wx', attribution: 'RainViewer', maxNativeZoom: 7 }).addTo(map);
+      else { const opts = { ...wmsBase, layers: name, opacity: 0 }; if (t != null) opts.time = new Date(t).toISOString(); mapState.frameLayers[key] = L.tileLayer.wms(wmsUrl, opts).addTo(map); }
     }
     return key;
   };
@@ -1457,13 +1529,14 @@ function buildMap(d, def, ui) {
     try {
       const size = map.getSize(), b = map.getBounds(), sw = L.CRS.EPSG3857.project(b.getSouthWest()), ne = L.CRS.EPSG3857.project(b.getNorthEast()), pt = map.latLngToContainerPoint(e.latlng);
       const q = async (ws, lyr, time) => { const p = new URLSearchParams({ service: 'WMS', version: '1.3.0', request: 'GetFeatureInfo', layers: lyr, query_layers: lyr, crs: 'EPSG:3857', bbox: `${sw.x},${sw.y},${ne.x},${ne.y}`, width: size.x, height: size.y, i: Math.round(pt.x), j: Math.round(pt.y), info_format: 'application/json', feature_count: 5 }); if (time) p.set('time', time); const r = await fetch(`${NOWCOAST}/${ws}/wms?${p}`); return r.ok ? r.json() : { features: [] }; };
+      if (def.src) throw new Error('nofi');
       const t = frames[mapState.idx], time = t == null ? null : new Date(t).toISOString();
-      const [main, al] = await Promise.all([q(def.ws, name, time), mapState.showAlerts && def.key !== 'alerts' ? q('alerts', ALERTS_LAYER) : { features: [] }]);
+      const [main, al] = await Promise.all([q(def.ws, name, time), !d.intl && mapState.showAlerts && def.key !== 'alerts' ? q('alerts', ALERTS_LAYER) : { features: [] }]);
       const fmtRaster = f => { const pr = f.properties || {}; const k = Object.keys(pr).find(k => /band|gray|value/i.test(k)); const v = k == null ? null : pr[k]; if (v == null || typeof v !== 'number') return null; if (def.key === 'radar' && v <= 0) return el('div', { style: 'margin-top:6px' }, `${def.name}: no echo`); return el('div', { style: 'margin-top:6px' }, `${def.name}: `, el('b', {}, `${Math.round(v * 10) / 10}${def.unit ? ' ' + def.unit : ''}`), t == null ? '' : el('span', { class: 'note' }, ` at ${fmtTime(t, d.tz)}`)); };
       const fmtAlert = f => { const pr = f.properties || {}; const title = pr.prod_type || pr.event || 'Alert'; return el('div', { style: 'margin-top:6px' }, el('b', {}, title), pr.wfo ? el('div', { class: 'note' }, `issued by ${pr.wfo}${pr.vtec ? ' · ' + vtecWindow(pr.vtec, d.tz) : ''}`) : null); };
       const got = def.key === 'alerts' ? (main.features || []).map(fmtAlert) : [...(main.features || []).map(fmtRaster), ...(al.features || []).map(fmtAlert)].filter(Boolean);
       body.append(...(got.length ? got : [el('div', { class: 'note' }, `No ${def.name.toLowerCase()} value at this point.`)]));
-    } catch (err) { body.append(el('div', { class: 'note' }, 'Could not read the layer value here.')); }
+    } catch (err) { body.append(el('div', { class: 'note' }, err.message === 'nofi' ? 'Point values are not available for this layer.' : 'Could not read the layer value here.')); }
     body.append(el('button', { class: 'btn', onclick: () => { map.closePopup(); load(lat, lng, null, true); } }, 'Forecast for this point'));
     popup.setContent(body);
   });
@@ -1492,9 +1565,9 @@ function stopPlay() { mapState.playing = false; if (mapState.timer) clearInterva
 async function geocode(q) {
   const m = /^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/.exec(q);
   if (m) return { lat: +m[1], lon: +m[2], label: null };
-  const r = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=us,pr,vi,gu,as,mp&q=${encodeURIComponent(q)}`, { headers: { Accept: 'application/json' } });
+  const r = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=us,ca,mx,br,pr,vi,gu,as,mp&q=${encodeURIComponent(q)}`, { headers: { Accept: 'application/json' } });
   const j = await r.json();
-  if (!j.length) throw new Error('No matching US place found.');
+  if (!j.length) throw new Error('No matching place found in the US, Canada, Mexico or Brazil.');
   const a = j[0], name = a.display_name.split(',').slice(0, 2).map(s => s.trim()).join(', ');
   return { lat: +a.lat, lon: +a.lon, label: name };
 }

@@ -55,7 +55,14 @@ The default location is ZIP 07304 (Jersey City, NJ). A `?lat=&lon=&name=` query
 string overrides it, and so does a location chosen with the search box (place
 names are resolved with Nominatim; `lat,lon` pairs are used directly) or the
 📍 button, which is remembered in `localStorage`.
-The NWS only covers the United States and its territories.
+The NWS only covers the United States and its territories. Outside the United
+States (Canada, Mexico, Brazil and anywhere else) the page falls back to
+Open-Meteo for current conditions, the hourly rows, the 10-day outlook and the
+health indices; the Map view switches to RainViewer global radar (plus
+Environment Canada GeoMet radar in Canada), nowCOAST lightning and global
+satellite; official warnings are linked to Environment Canada, CONAGUA or INMET
+rather than read, and NESDIS imagery offers CONUS or full disk where no sector
+exists. The search box accepts places in the US, Canada, Mexico and Brazil.
 
 Not every forecast office publishes every layer. Views say so explicitly when a
 layer (for example Lightning Activity Level or the fire danger indices) is
