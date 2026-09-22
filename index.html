@@ -156,6 +156,16 @@ table.data tr.night td{background:var(--night)}
 .day details{font-size:13px;margin-top:4px}.day summary{cursor:pointer;color:var(--accent)}.day details p{margin:6px 0 0;color:var(--text2)}
 .day .src{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.14em;margin-top:auto;padding-top:6px}
 .skymap{height:440px}
+.pips{display:inline-flex;gap:2px;vertical-align:2px;margin-left:4px}
+.pips i{width:9px;height:9px;border-radius:50%;border:1px solid var(--line);background:transparent;display:inline-block}
+.pips i.on{background:var(--s-yellow);border-color:var(--s-yellow)}
+.pips[data-v="4"] i.on,.pips[data-v="5"] i.on{background:var(--s-red);border-color:var(--s-red)}
+.pips[data-v="1"] i.on,.pips[data-v="2"] i.on{background:var(--s-aqua);border-color:var(--s-aqua)}
+.pips.good[data-v="4"] i.on,.pips.good[data-v="5"] i.on{background:var(--s-aqua);border-color:var(--s-aqua)}
+.pips.good[data-v="1"] i.on,.pips.good[data-v="2"] i.on{background:var(--s-red);border-color:var(--s-red)}
+.tiles.health{grid-template-columns:repeat(auto-fill,minmax(210px,1fr))}
+.tiles.health .s{min-height:2.4em}
+.health-out td{vertical-align:top}
 .apod img{width:100%;max-width:1000px;border-radius:10px;border:1px solid var(--line);display:block}
 .apod-video{position:relative;padding-top:56.25%;max-width:1000px}
 .apod-video iframe{position:absolute;inset:0;width:100%;height:100%;border:0;border-radius:10px}
@@ -231,7 +241,7 @@ footer{margin-top:28px;font-size:13px;color:var(--muted);line-height:1.6}
 <script>
 'use strict';
 const API = 'https://api.weather.gov';
-const BUILD = '2026-09-14.7';
+const BUILD = '2026-09-22.1';
 const HOUR = 3600e3;
 const $ = s => document.querySelector(s);
 function el(tag, attrs = {}, ...kids) {
@@ -352,13 +362,15 @@ async function load(lat, lon, label, remember) {
   try {
     const pts = await nws(`${API}/points/${lat.toFixed(4)},${lon.toFixed(4)}`);
     const p = pts.properties;
-    const [grid, hourly, stations, alerts, dailyNws, om] = await Promise.all([
+    const [grid, hourly, stations, alerts, dailyNws, om, omH, aq] = await Promise.all([
       nws(p.forecastGridData),
       nws(p.forecastHourly).catch(() => null),
       nws(p.observationStations).catch(() => null),
       nws(`${API}/alerts/active?point=${lat.toFixed(4)},${lon.toFixed(4)}`).catch(() => ({ features: [] })),
       nws(p.forecast).catch(() => null),
-      fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}&daily=weather_code,temperature_2m_max,temperature_2m_min,apparent_temperature_max,apparent_temperature_min,precipitation_sum,snowfall_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant,uv_index_max,sunrise,sunset&forecast_days=10&timezone=${encodeURIComponent(p.timeZone || 'auto')}`).then(r => r.ok ? r.json() : null).catch(() => null)
+      fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}&daily=weather_code,temperature_2m_max,temperature_2m_min,apparent_temperature_max,apparent_temperature_min,precipitation_sum,snowfall_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant,uv_index_max,sunrise,sunset&forecast_days=10&timezone=${encodeURIComponent(p.timeZone || 'auto')}`).then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}&hourly=temperature_2m,relative_humidity_2m,dew_point_2m,pressure_msl,uv_index,wind_speed_10m,precipitation,weather_code,cape&past_days=2&forecast_days=7&timeformat=unixtime&timezone=UTC`).then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch(`https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}&hourly=us_aqi,pm2_5,pm10,ozone,dust,alder_pollen,birch_pollen,grass_pollen,mugwort_pollen,olive_pollen,ragweed_pollen&past_days=2&forecast_days=5&timeformat=unixtime&timezone=UTC`).then(r => r.ok ? r.json() : null).catch(() => null)
     ]);
     let obs = null;
     if (stations) {
@@ -369,7 +381,7 @@ async function load(lat, lon, label, remember) {
         } catch (e) { }
       }
     }
-    state.data = assemble({ pts: p, grid: grid.properties, hourly: hourly && hourly.properties, obs, alerts: alerts.features || [], lat, lon, dailyNws: dailyNws && dailyNws.properties, om });
+    state.data = assemble({ pts: p, grid: grid.properties, hourly: hourly && hourly.properties, obs, alerts: alerts.features || [], lat, lon, dailyNws: dailyNws && dailyNws.properties, om, omH, aq });
     state.updated = Date.now();
     if (remember) localStorage.setItem('wx.loc2', JSON.stringify({ lat, lon, label: state.label }));
   } catch (e) {
@@ -381,7 +393,7 @@ async function load(lat, lon, label, remember) {
 const NUMERIC = ['temperature', 'apparentTemperature', 'dewpoint', 'relativeHumidity', 'heatIndex', 'windChill', 'skyCover', 'windDirection', 'windSpeed', 'windGust', 'probabilityOfPrecipitation', 'snowLevel', 'visibility', 'ceilingHeight', 'probabilityOfThunder', 'lightningActivityLevel', 'grasslandFireDangerIndex', 'redFlagThreatIndex', 'hainesIndex', 'twentyFootWindSpeed', 'twentyFootWindDirection', 'transportWindSpeed', 'transportWindDirection', 'mixingHeight', 'pressure', 'heatRisk', 'davisStabilityIndex', 'atmosphericDispersionIndex', 'lowVisibilityOccurrenceRiskIndex', 'wetBulbGlobeTemperature'];
 const ACCUM = ['quantitativePrecipitation', 'snowfallAmount', 'iceAccumulation'];
 
-function assemble({ pts, grid, hourly, obs, alerts, lat, lon, dailyNws, om }) {
+function assemble({ pts, grid, hourly, obs, alerts, lat, lon, dailyNws, om, omH, aq }) {
   const tz = pts.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone;
   const now = Date.now();
   const h0 = Math.floor(now / HOUR) * HOUR;
@@ -411,7 +423,7 @@ function assemble({ pts, grid, hourly, obs, alerts, lat, lon, dailyNws, om }) {
   });
   const sun = sunTimes(now, lat, lon);
   const alertsSorted = alerts.map(f => f.properties).sort((a, b) => sevRank(a.severity) - sevRank(b.severity));
-  return { tz, hours, rows, obs, alerts: alertsSorted, pts, grid, sun, radar: pts.radarStation, layers, daily: buildDaily(dailyNws, om, tz) };
+  return { tz, hours, rows, obs, alerts: alertsSorted, pts, grid, sun, radar: pts.radarStation, layers, daily: buildDaily(dailyNws, om, tz), health: computeHealth(omH, aq, tz, lat) };
 }
 const SEVS = ['Extreme', 'Severe', 'Moderate', 'Minor', 'Unknown'];
 const sevRank = s => { const i = SEVS.indexOf(s); return i < 0 ? 9 : i; };
@@ -419,7 +431,7 @@ const alertMatches = (a, re) => re.test(a.event + ' ' + (a.headline || ''));
 const RE = { storm: /tornado|thunderstorm|severe|lightning|hurricane|tropical|special weather/i, fire: /fire|red flag|smoke/i, snow: /winter|snow|ice|blizzard|freez|frost|cold|wind chill|sleet/i, rain: /flood|rain|hydrologic/i, wind: /wind|gale|storm warning|small craft/i, heat: /heat/i, clouds: /fog|smoke|air quality|dense/i };
 
 // ---------- chart ----------
-function chart({ rows, tz, series, yFmt, yMin, yMax, height = 250, arrows, ticks = 4, integer = false, ariaLabel, xLabel, tipLabel }) {
+function chart({ rows, tz, series, yFmt, yMin, yMax, height = 250, arrows, ticks = 4, integer = false, ariaLabel, xLabel, tipLabel, dots = true }) {
   const W = 760, H = height, pad = { l: 52, r: 14, t: 14, b: arrows ? 56 : 34 };
   const n = rows.length, iw = W - pad.l - pad.r, ih = H - pad.t - pad.b, band = iw / n;
   const all = series.flatMap(s => s.values).filter(v => v != null && isFinite(v));
@@ -466,7 +478,7 @@ function chart({ rows, tz, series, yFmt, yMin, yMax, height = 250, arrows, ticks
         svg.append(sv('path', { d: a, fill: s.color, opacity: 0.18 }));
       }
       svg.append(sv('path', { d, fill: 'none', stroke: s.color, 'stroke-width': 2, 'stroke-dasharray': s.dash ? '6 4' : null, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
-      pts.forEach(p => { if (p) svg.append(sv('circle', { cx: p[0], cy: p[1], r: 3.5, fill: s.color, stroke: 'var(--surface)', 'stroke-width': 2 })); });
+      if (dots && s.dots !== false) pts.forEach(p => { if (p) svg.append(sv('circle', { cx: p[0], cy: p[1], r: 3.5, fill: s.color, stroke: 'var(--surface)', 'stroke-width': 2 })); });
     }
   });
   // direction arrows (wind: NWS gives the direction wind blows FROM; arrow points where it goes TO)
@@ -643,6 +655,7 @@ function viewOverview(d) {
     section('Temperature and rain', el('div', { class: 'grid2' },
       chart({ rows: R, tz, yFmt: v => `${Math.round(v)}°`, series: [{ name: 'Temperature', color: C('orange'), values: R.map(r => valT(r.temperature)) }, { name: 'Feels like', color: C('magenta'), dash: true, values: R.map(r => valT(r.apparentTemperature)) }], height: 220 }),
       chart({ rows: R, tz, yFmt: v => `${Math.round(v)}%`, yMin: 0, yMax: 100, series: [{ name: 'Rain chance', color: C('blue'), kind: 'bar', values: R.map(r => r.probabilityOfPrecipitation) }], height: 220 }))),
+    healthSection(d),
     skySummary(d, cal),
     ...skyPanels(d, cal),
     d.rows.some(r => r.weatherText) ? section('Forecast weather by hour', wordsRow(d, r => r.weatherText, 'Weather')) : null
@@ -1140,6 +1153,110 @@ function skyPanels(d, cal) {
   return [subnav, ...subs.map(x => x[2])];
 }
 function viewSky(d) { const cal = skyCalendar(state.lat, state.lon, d.tz); return [skySummary(d, cal), ...skyPanels(d, cal)]; }
+
+// ---------- health & comfort indices (Xweather-style 1–5 scale, computed here from free data) ----------
+const HEALTH_LEVELS = ['', 'Low', 'Moderate', 'Elevated', 'High', 'Very high'];
+const POLLEN_KEYS = ['alder_pollen', 'birch_pollen', 'grass_pollen', 'mugwort_pollen', 'olive_pollen', 'ragweed_pollen'];
+function pollenSeason(month, lat) { // 0-based month; rough Northern-hemisphere calendar
+  if (lat < 0) month = (month + 6) % 12;
+  return [1, 1.5, 2.5, 3.5, 3.5, 3, 2, 2.5, 3, 2.5, 1.5, 1][month];
+}
+function computeHealth(omH, aq, tz, lat) {
+  if (!omH || !omH.hourly || !omH.hourly.time) return null;
+  const H = omH.hourly, n = H.time.length, g = (k, i) => (H[k] ? H[k][i] : null);
+  const A = aq && aq.hourly ? aq.hourly : null; const aqIdx = {}; if (A) A.time.forEach((t, i) => aqIdx[t] = i);
+  const now = Date.now(), nowIdx = Math.max(0, H.time.findIndex(t => t * 1000 > now) - 1);
+  const hours = H.time.map((t, i) => {
+    const ai = A ? aqIdx[t] : undefined, a = k => ai == null || !A[k] ? null : A[k][ai];
+    const pollen = POLLEN_KEYS.map(k => a(k)).filter(v => v != null);
+    return { t: t * 1000, i, temp: g('temperature_2m', i), rh: g('relative_humidity_2m', i), dew: g('dew_point_2m', i), p: g('pressure_msl', i), uv: g('uv_index', i), wind: g('wind_speed_10m', i), precip: g('precipitation', i), code: g('weather_code', i), cape: g('cape', i), aqi: a('us_aqi'), pm25: a('pm2_5'), pm10: a('pm10'), o3: a('ozone'), dust: a('dust'), pollen: pollen.length ? Math.max(...pollen) : null };
+  });
+  const day = t => new Date(t).toLocaleDateString('en-CA', { timeZone: tz });
+  const dp = (i, back) => { const j = i - back; return j >= 0 && hours[i].p != null && hours[j].p != null ? hours[i].p - hours[j].p : null; };
+  const dT = (i, back) => { const j = i - back; return j >= 0 && hours[i].temp != null && hours[j].temp != null ? hours[i].temp - hours[j].temp : null; };
+  const clamp = v => Math.max(1, Math.min(5, Math.round(v)));
+  // score a window of hour indices
+  const score = idx => {
+    const w = idx.map(i => hours[i]);
+    const mx = k => Math.max(...w.map(h => h[k] ?? -Infinity)), mn = k => Math.min(...w.map(h => h[k] ?? Infinity));
+    const maxFall24 = Math.min(...idx.map(i => dp(i, 24) ?? 0)), maxRise24 = Math.max(...idx.map(i => dp(i, 24) ?? 0)), maxAbs3 = Math.max(...idx.map(i => Math.abs(dp(i, 3) ?? 0)));
+    const swingT = Math.max(...idx.map(i => Math.abs(dT(i, 24) ?? 0))), dropT = Math.min(...idx.map(i => dT(i, 24) ?? 0));
+    const storm = w.some(h => (h.code != null && h.code >= 95) || (h.cape != null && h.cape >= 1000));
+    const rain = w.reduce((a, h) => a + (h.precip || 0), 0), rh = mx('rh'), rhMin = mn('rh'), tMax = mx('temp'), tMin = mn('temp'), uv = mx('uv'), wind = mx('wind'), aqi = mx('aqi'), pm25 = mx('pm25'), dust = mx('dust'), pol = mx('pollen');
+    const month = new Date(w[0].t).getMonth();
+    const R = {};
+    // Migraine
+    { let s = 1, why = []; if (maxFall24 <= -8 || maxRise24 >= 8) { s += 2; why.push(`pressure ${maxFall24 <= -8 ? 'falling' : 'rising'} ${Math.abs(maxFall24 <= -8 ? maxFall24 : maxRise24).toFixed(0)} hPa in 24 h`); } else if (maxFall24 <= -4 || maxRise24 >= 4) { s += 1; why.push(`pressure ${maxFall24 <= -4 ? 'falling' : 'rising'} ${Math.abs(maxFall24 <= -4 ? maxFall24 : maxRise24).toFixed(0)} hPa in 24 h`); }
+      if (maxAbs3 >= 3) { s += 1; why.push('fast pressure change'); } if (rh >= 80) { s += 1; why.push(`humidity ${Math.round(rh)}%`); } else if (rhMin <= 30) { s += 1; why.push('very dry air'); }
+      if (swingT >= 10) { s += 1; why.push(`temperature swing ${Math.round(swingT)}°C`); } if (storm) { s += 1; why.push('thunderstorms'); } if (tMax >= 30) { s += 1; why.push('heat'); } if (uv >= 8) { s += 0.5; why.push('strong glare'); }
+      R.migraine = { v: clamp(s), why }; }
+    // Arthritis
+    { let s = 1, why = []; if (maxFall24 <= -6) { s += 2; why.push(`pressure falling ${Math.abs(maxFall24).toFixed(0)} hPa`); } else if (maxFall24 <= -3) { s += 1; why.push('pressure falling'); }
+      if (tMin <= 5) { s += 1; why.push('cold'); } else if (tMin <= 12) { s += 0.5; why.push('cool'); } if (rh >= 75 || rain > 0.5) { s += 1; why.push(rain > 0.5 ? 'rain' : 'damp air'); } if (dropT <= -8) { s += 1; why.push('temperature dropping'); } if (wind >= 30) { s += 0.5; why.push('windy'); }
+      R.arthritis = { v: clamp(s), why }; }
+    // Sinus
+    { let s = 1, why = []; if (Math.abs(maxFall24) >= 5 || maxRise24 >= 5) { s += 1; why.push('pressure change'); } if (rhMin <= 30) { s += 1; why.push('dry air'); } else if (rh >= 85) { s += 0.5; why.push('very humid'); }
+      if (tMin <= 5) { s += 1; why.push('cold air'); } if (swingT >= 10) { s += 1; why.push('temperature swing'); } if (aqi >= 100 || pm25 >= 35) { s += 1; why.push('poor air quality'); } if (pol >= 50) { s += 1; why.push('pollen'); }
+      R.sinus = { v: clamp(s), why }; }
+    // Allergy (pollen): measured where available, otherwise season + weather estimate
+    { let s, why = [], est = pol == null || !isFinite(pol);
+      if (!est) { s = pol < 20 ? 1 : pol < 80 ? 2 : pol < 200 ? 3 : pol < 500 ? 4 : 5; why.push(`pollen ${Math.round(pol)} grains/m³`); }
+      else { s = pollenSeason(month, lat); const dryWindy = w.filter(h => h.rh != null && h.rh < 50 && h.wind >= 15 && !(h.precip > 0)).length >= 3; if (dryWindy) { s += 1; why.push('dry, breezy air spreads pollen'); } if (rain >= 2) { s -= 1; why.push('rain washes pollen out'); } if (tMax <= 0) { s = 1; why.push('freezing'); } why.unshift(`${['', 'off-season', 'light season', 'tree/grass season', 'peak season'][Math.round(Math.min(4, s))] || 'season'} estimate`); }
+      if (rh >= 70 && tMax >= 15 && tMax <= 30) { s += 0.5; why.push('mould-friendly humidity'); }
+      if (est) s = Math.min(s, 4);
+      R.allergy = { v: clamp(s), why, estimated: est }; }
+    // Asthma / air quality
+    { let s = aqi == null || !isFinite(aqi) ? 1 : aqi <= 50 ? 1 : aqi <= 100 ? 2 : aqi <= 150 ? 3 : aqi <= 200 ? 4 : 5, why = []; if (isFinite(aqi)) why.push(`US AQI ${Math.round(aqi)}`);
+      if (tMin <= 0 && rhMin < 40) { s += 1; why.push('cold dry air'); } if (storm) { s += 0.5; why.push('storm outflow'); } if (dust >= 50) { s += 1; why.push('dust'); } if (pol >= 200) { s += 0.5; why.push('pollen'); }
+      R.asthma = { v: clamp(s), why }; }
+    // Cold & flu
+    { let s = 1, why = []; if (tMin <= 5) { s += 1.5; why.push('cold'); } else if (tMin <= 12) { s += 0.5; why.push('cool'); } if (rhMin <= 40) { s += 1; why.push('dry air helps viruses linger'); } if (swingT >= 10) { s += 1; why.push('big temperature swing'); } if ([10, 11, 0, 1, 2].includes(month)) { s += 1; why.push('flu season'); }
+      R.coldflu = { v: clamp(s), why }; }
+    // UV
+    { const s = !isFinite(uv) ? 1 : uv < 3 ? 1 : uv < 6 ? 2 : uv < 8 ? 3 : uv < 11 ? 4 : 5; R.uv = { v: s, why: isFinite(uv) ? [`UV index ${uv.toFixed(0)}`, s >= 3 ? 'sunscreen and shade at midday' : 'little protection needed'] : [] }; }
+    // Outdoors (activity: higher = better)
+    { let s = 5, why = []; if (rain >= 1) { s -= 2; why.push('rain'); } if (tMax >= 32 || tMin <= 0) { s -= 2; why.push(tMax >= 32 ? 'heat' : 'freezing'); } else if (tMax >= 28 || tMin <= 6) { s -= 1; why.push(tMax >= 28 ? 'warm' : 'chilly'); } if (wind >= 35) { s -= 1; why.push('windy'); } if (aqi >= 100) { s -= 1; why.push('air quality'); } if (storm) { s -= 1; why.push('storms'); }
+      R.outdoors = { v: clamp(s), why: why.length ? why : ['pleasant conditions'] }; }
+    return { R, stats: { maxFall24, maxRise24, rh, tMax, tMin, uv, aqi, pm25, pol, rain } };
+  };
+  const next24 = []; for (let i = nowIdx; i < Math.min(n, nowIdx + 24); i++) next24.push(i);
+  const today = score(next24);
+  const byDay = {}; hours.forEach((h, i) => { if (h.t < now - 2 * HOUR) return; const k = day(h.t); (byDay[k] = byDay[k] || []).push(i); });
+  const days = Object.entries(byDay).slice(0, 7).map(([date, idx]) => ({ date, ...score(idx) }));
+  const cur = hours[nowIdx];
+  return { hours, nowIdx, today, days, current: { p: cur && cur.p, dp24: dp(nowIdx, 24), dp3: dp(nowIdx, 3), aqi: cur && cur.aqi, pm25: cur && cur.pm25, o3: cur && cur.o3, uv: cur && cur.uv, rh: cur && cur.rh, pollen: cur && cur.pollen }, pollenMeasured: hours.some(h => h.pollen != null) };
+}
+const HEALTH_INDEX = [['migraine', 'Migraine', '🤕', 'Pressure swings, humidity, heat, storms and glare.'], ['arthritis', 'Arthritis', '🦴', 'Falling pressure, cold, damp.'], ['sinus', 'Sinus', '👃', 'Pressure change, dry or cold air, pollen, smoke.'], ['allergy', 'Allergy (pollen)', '🌾', 'Pollen and mould conditions.'], ['asthma', 'Asthma & air', '🫁', 'Air quality, cold dry air, dust, storm outflow.'], ['coldflu', 'Cold & flu', '🤧', 'Cold, dry air and temperature swings.'], ['uv', 'UV & sunburn', '☀️', 'Peak UV index.'], ['outdoors', 'Outdoors', '🚶', 'Activity score: higher is better.']];
+const pips = (v, good) => el('span', { class: 'pips' + (good ? ' good' : ''), 'data-v': v, title: `${v} of 5` }, [1, 2, 3, 4, 5].map(i => el('i', { class: i <= v ? 'on' : '' })));
+const fmtP = hpa => hpa == null ? '–' : US() ? `${(hpa / 33.8639).toFixed(2)} inHg` : `${hpa.toFixed(0)} hPa`;
+function healthSection(d) {
+  const h = d.health, tz = d.tz;
+  if (!h) return section('Health & comfort', el('p', { class: 'empty' }, 'Hourly pressure and air-quality data are not available for this point right now.'));
+  const T = h.today.R, c = h.current;
+  const tiles = el('div', { class: 'tiles health' }, HEALTH_INDEX.map(([k, name, emo, desc]) => { const r = T[k]; const good = k === 'outdoors'; const flag = good ? r.v <= 2 : r.v >= 4;
+    return el('div', { class: 'tile' + (flag ? ' flag' : ''), title: desc }, el('div', { class: 'k' }, `${emo} ${name}`), el('div', { class: 'v', style: 'font-size:18px' }, `${HEALTH_LEVELS[r.v]}${r.estimated ? '*' : ''}`, ' ', pips(r.v, good)), el('div', { class: 's' }, r.why.slice(0, 3).join(' · ') || desc)); }));
+  const trend = c.dp24 == null ? '' : c.dp24 <= -4 ? `falling fast (${c.dp24.toFixed(1)} hPa in 24 h)` : c.dp24 <= -1.5 ? `falling (${c.dp24.toFixed(1)} hPa in 24 h)` : c.dp24 >= 4 ? `rising fast (+${c.dp24.toFixed(1)} hPa in 24 h)` : c.dp24 >= 1.5 ? `rising (+${c.dp24.toFixed(1)} hPa in 24 h)` : 'steady';
+  const aqiCat = a => a == null ? '–' : a <= 50 ? 'Good' : a <= 100 ? 'Moderate' : a <= 150 ? 'Unhealthy for sensitive groups' : a <= 200 ? 'Unhealthy' : a <= 300 ? 'Very unhealthy' : 'Hazardous';
+  const facts = el('div', { class: 'kv', style: 'margin-top:12px' },
+    el('div', {}, el('div', { class: 'k' }, 'Pressure'), el('div', { class: 'v' }, fmtP(c.p), el('small', {}, trend))),
+    el('div', {}, el('div', { class: 'k' }, 'Air quality'), el('div', { class: 'v' }, c.aqi == null ? '–' : `AQI ${Math.round(c.aqi)}`, el('small', {}, `${aqiCat(c.aqi)}${c.pm25 != null ? ` · PM2.5 ${c.pm25.toFixed(0)} µg/m³` : ''}${c.o3 != null ? ` · ozone ${c.o3.toFixed(0)}` : ''}`))),
+    el('div', {}, el('div', { class: 'k' }, 'Humidity'), el('div', { class: 'v' }, c.rh == null ? '–' : `${Math.round(c.rh)}%`, el('small', {}, c.rh >= 70 ? 'muggy' : c.rh <= 30 ? 'very dry' : 'comfortable'))),
+    el('div', {}, el('div', { class: 'k' }, 'UV now'), el('div', { class: 'v' }, c.uv == null ? '–' : c.uv.toFixed(0), el('small', {}, `today peaks at ${h.today.stats.uv.toFixed(0)}`))),
+    el('div', {}, el('div', { class: 'k' }, 'Pollen'), el('div', { class: 'v' }, h.pollenMeasured && c.pollen != null ? `${Math.round(c.pollen)} /m³` : 'estimate', el('small', {}, h.pollenMeasured ? 'measured (CAMS)' : 'no US count feed; season + weather'))));
+  // pressure chart: past 48 h to next 48 h, hourly
+  const from = Math.max(0, h.nowIdx - 48), to = Math.min(h.hours.length - 1, h.nowIdx + 48);
+  const rows = []; for (let i = from; i <= to; i++) rows.push({ t: h.hours[i].t, i: i - from, night: isNight(h.hours[i].t + HOUR / 2, state.lat, state.lon), cond: '', isNow: i === h.nowIdx });
+  const pvals = rows.map((r, j) => { const p = h.hours[from + j].p; return p == null ? null : US() ? p / 33.8639 : p; });
+  const pchart = chart({ rows, tz: d.tz, yFmt: v => US() ? v.toFixed(2) : `${Math.round(v)}`, height: 200, dots: false, xLabel: (r, i) => r.isNow ? 'Now' : (new Date(r.t).getUTCHours() % 12 === 0 && i % 6 === 0) || i % 12 === 0 ? fmtDT(r.t, tz).replace(/:\d\d/, '') : '', tipLabel: r => fmtDT(r.t, tz) + (r.isNow ? ' (now)' : r.t < Date.now() ? ' (observed / analysed)' : ' (forecast)'), series: [{ name: `Sea-level pressure (${US() ? 'inHg' : 'hPa'})`, color: C('violet'), kind: 'area', values: pvals, fmt: v => US() ? `${v.toFixed(2)} inHg` : `${v.toFixed(1)} hPa` }] });
+  const outlook = el('div', { class: 'chartwrap' }, el('table', { class: 'data narrow health-out' },
+    el('thead', {}, el('tr', {}, el('th', { style: 'text-align:left' }, 'Day'), HEALTH_INDEX.map(([k, name, emo]) => el('th', { style: 'text-align:left', title: name }, `${emo} ${name.split(' ')[0]}`)))),
+    el('tbody', {}, h.days.map((dy, i) => el('tr', {}, el('td', {}, el('b', {}, dayName(dy.date, i)), el('div', { class: 'note' }, dayMD(dy.date))), HEALTH_INDEX.map(([k]) => { const r = dy.R[k]; return el('td', { title: r.why.join(', ') }, pips(r.v, k === 'outdoors'), el('div', { class: 'note' }, HEALTH_LEVELS[r.v])); }))))));
+  return section('Health & comfort', el('p', { class: 'lede' }, `How the next 24 hours may feel. Scores run 1 (low) to 5 (very high) for symptoms, the same scale Xweather uses; Outdoors runs the other way, 5 is best. Pressure is ${trend || 'steady'}.`),
+    tiles, facts,
+    el('div', { style: 'margin-top:14px' }, el('h3', {}, 'Barometric pressure, past 48 h and next 48 h'), pchart),
+    el('div', { style: 'margin-top:14px' }, el('h3', {}, '7-day outlook'), outlook),
+    el('p', { class: 'note', style: 'margin-top:10px' }, 'Computed in the page from Open-Meteo hourly pressure, humidity, temperature, UV, wind, rain and storm energy, plus the Open-Meteo air-quality feed (US AQI, PM2.5, ozone, dust). ', h.pollenMeasured ? 'Pollen is measured (Copernicus CAMS).' : '* Pollen is an estimate from season and weather; no free US pollen-count feed exists. ', 'These are guides, not medical advice; your own triggers matter more than any index.'));
+}
 
 // ---------- NESDIS GOES imagery + NASA APOD ----------
 const NESDIS_CDN = 'https://cdn.star.nesdis.noaa.gov';

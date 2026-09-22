@@ -15,6 +15,7 @@ Live: https://weather-now.exe.xyz
 | Overview | Hourly strip with NWS icons, temperature and rain charts, tonight's sky summary and the sky sub-tabs |
 | Map | Leaflet map with NOAA nowCOAST layers: radar loop, lightning density, GOES infrared clouds, forecast temperature, feels-like, rain chance, rain amount, snow, cloud cover, wind speed, gusts, wind barbs, humidity, and NWS alert polygons; time slider and play button; click for the value at a point or to load that point's forecast |
 | 10-day | Day cards with NWS text, icons, highs and lows for seven days and Open-Meteo model guidance for days 8 to 10; highs/lows, precipitation and wind charts across all ten days |
+| Health & comfort | Xweather-style 1–5 indices for migraine, arthritis, sinus, allergy (pollen), asthma & air quality, cold & flu, UV, and an Outdoors activity score, with the reasons behind each score; current pressure trend, AQI, humidity, UV; a 96-hour barometric pressure chart; a 7-day outlook table |
 | Overview (sky block) | Live map of the ISS, Tiangong, Hubble, NOAA-20, Terra, Landsat 9 and GOES-19 from CelesTrak orbital elements (satellite.js SGP4), with ground track, horizon footprint and day/night terminator; naked-eye pass predictions over the location for 10 days; tonight's sky and a 10-day calendar of sun/moon times, moon phase, visible planets, moon phases, equinoxes, meteor-shower peaks, eclipses and conjunctions |
 | NESDIS imagery (sky sub-tab) | Live GOES-East/West imagery from NOAA NESDIS STAR: local sector, CONUS or full disk; GeoColor, clean IR, visible, water vapor, shortwave IR, air mass, sandwich, fire temperature, dust; still or animated loop |
 | Astronomy picture of the day | NASA APOD at the bottom of every view, with explanation and full-resolution link |
@@ -116,6 +117,15 @@ Then open `http://localhost:8765/?lat=37.7749&lon=-122.4194`.
 the VM's proxy port. See the script for the one-time nginx setup.
 
 ## Data notes
+
+- Health indices are computed in the page from Open-Meteo hourly data (two
+  days back, seven ahead: sea-level pressure, humidity, temperature, UV, wind,
+  precipitation, weather code, CAPE) and the Open-Meteo air-quality feed (US
+  AQI, PM2.5, PM10, ozone, dust, CAMS pollen where available). The scale mirrors
+  Xweather's indices endpoint, which needs a paid client id and secret; if you
+  have one, the same block can be fed from it via a small server-side proxy.
+  US pollen is an estimate from season and weather because no free count feed
+  exists; it is marked with an asterisk and capped at High.
 
 - APOD is read from `apod.json`, which `deploy.sh` keeps fresh on the VM with an
   hourly cron job using NASA's public DEMO_KEY (so viewers never hit the API
