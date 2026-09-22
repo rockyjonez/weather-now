@@ -164,6 +164,8 @@ table.data tr.night td{background:var(--night)}
 .pips.good[data-v="4"] i.on,.pips.good[data-v="5"] i.on{background:var(--s-aqua);border-color:var(--s-aqua)}
 .pips.good[data-v="1"] i.on,.pips.good[data-v="2"] i.on{background:var(--s-red);border-color:var(--s-red)}
 .tiles.health{grid-template-columns:repeat(auto-fill,minmax(210px,1fr))}
+.health-legend{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--text2);margin:0 0 12px}
+.health-legend .pips{margin:0 2px 0 0}
 .tiles.health .s{min-height:2.4em}
 .health-out td{vertical-align:top}
 .apod img{width:100%;max-width:1000px;border-radius:10px;border:1px solid var(--line);display:block}
@@ -241,7 +243,7 @@ footer{margin-top:28px;font-size:13px;color:var(--muted);line-height:1.6}
 <script>
 'use strict';
 const API = 'https://api.weather.gov';
-const BUILD = '2026-09-22.1';
+const BUILD = '2026-09-22.2';
 const HOUR = 3600e3;
 const $ = s => document.querySelector(s);
 function el(tag, attrs = {}, ...kids) {
@@ -1214,8 +1216,8 @@ function computeHealth(omH, aq, tz, lat) {
       R.coldflu = { v: clamp(s), why }; }
     // UV
     { const s = !isFinite(uv) ? 1 : uv < 3 ? 1 : uv < 6 ? 2 : uv < 8 ? 3 : uv < 11 ? 4 : 5; R.uv = { v: s, why: isFinite(uv) ? [`UV index ${uv.toFixed(0)}`, s >= 3 ? 'sunscreen and shade at midday' : 'little protection needed'] : [] }; }
-    // Outdoors (activity: higher = better)
-    { let s = 5, why = []; if (rain >= 1) { s -= 2; why.push('rain'); } if (tMax >= 32 || tMin <= 0) { s -= 2; why.push(tMax >= 32 ? 'heat' : 'freezing'); } else if (tMax >= 28 || tMin <= 6) { s -= 1; why.push(tMax >= 28 ? 'warm' : 'chilly'); } if (wind >= 35) { s -= 1; why.push('windy'); } if (aqi >= 100) { s -= 1; why.push('air quality'); } if (storm) { s -= 1; why.push('storms'); }
+    // Outdoor discomfort (higher = worse, like every other score)
+    { let s = 1, why = []; if (rain >= 1) { s += 2; why.push('rain'); } if (tMax >= 32 || tMin <= 0) { s += 2; why.push(tMax >= 32 ? 'heat' : 'freezing'); } else if (tMax >= 28 || tMin <= 6) { s += 1; why.push(tMax >= 28 ? 'warm' : 'chilly'); } if (wind >= 35) { s += 1; why.push('windy'); } if (aqi >= 100) { s += 1; why.push('air quality'); } if (storm) { s += 1; why.push('storms'); }
       R.outdoors = { v: clamp(s), why: why.length ? why : ['pleasant conditions'] }; }
     return { R, stats: { maxFall24, maxRise24, rh, tMax, tMin, uv, aqi, pm25, pol, rain } };
   };
@@ -1226,14 +1228,14 @@ function computeHealth(omH, aq, tz, lat) {
   const cur = hours[nowIdx];
   return { hours, nowIdx, today, days, current: { p: cur && cur.p, dp24: dp(nowIdx, 24), dp3: dp(nowIdx, 3), aqi: cur && cur.aqi, pm25: cur && cur.pm25, o3: cur && cur.o3, uv: cur && cur.uv, rh: cur && cur.rh, pollen: cur && cur.pollen }, pollenMeasured: hours.some(h => h.pollen != null) };
 }
-const HEALTH_INDEX = [['migraine', 'Migraine', '🤕', 'Pressure swings, humidity, heat, storms and glare.'], ['arthritis', 'Arthritis', '🦴', 'Falling pressure, cold, damp.'], ['sinus', 'Sinus', '👃', 'Pressure change, dry or cold air, pollen, smoke.'], ['allergy', 'Allergy (pollen)', '🌾', 'Pollen and mould conditions.'], ['asthma', 'Asthma & air', '🫁', 'Air quality, cold dry air, dust, storm outflow.'], ['coldflu', 'Cold & flu', '🤧', 'Cold, dry air and temperature swings.'], ['uv', 'UV & sunburn', '☀️', 'Peak UV index.'], ['outdoors', 'Outdoors', '🚶', 'Activity score: higher is better.']];
+const HEALTH_INDEX = [['migraine', 'Migraine', '🤕', 'Pressure swings, humidity, heat, storms and glare.'], ['arthritis', 'Arthritis', '🦴', 'Falling pressure, cold, damp.'], ['sinus', 'Sinus', '👃', 'Pressure change, dry or cold air, pollen, smoke.'], ['allergy', 'Allergy (pollen)', '🌾', 'Pollen and mould conditions.'], ['asthma', 'Asthma & air', '🫁', 'Air quality, cold dry air, dust, storm outflow.'], ['coldflu', 'Cold & flu', '🤧', 'Cold, dry air and temperature swings.'], ['uv', 'UV & sunburn', '☀️', 'Peak UV index.'], ['outdoors', 'Outdoor discomfort', '🚶', 'Rain, heat or cold, wind, storms and bad air while you are out.']];
 const pips = (v, good) => el('span', { class: 'pips' + (good ? ' good' : ''), 'data-v': v, title: `${v} of 5` }, [1, 2, 3, 4, 5].map(i => el('i', { class: i <= v ? 'on' : '' })));
 const fmtP = hpa => hpa == null ? '–' : US() ? `${(hpa / 33.8639).toFixed(2)} inHg` : `${hpa.toFixed(0)} hPa`;
 function healthSection(d) {
   const h = d.health, tz = d.tz;
   if (!h) return section('Health & comfort', el('p', { class: 'empty' }, 'Hourly pressure and air-quality data are not available for this point right now.'));
   const T = h.today.R, c = h.current;
-  const tiles = el('div', { class: 'tiles health' }, HEALTH_INDEX.map(([k, name, emo, desc]) => { const r = T[k]; const good = k === 'outdoors'; const flag = good ? r.v <= 2 : r.v >= 4;
+  const tiles = el('div', { class: 'tiles health' }, HEALTH_INDEX.map(([k, name, emo, desc]) => { const r = T[k]; const good = false; const flag = r.v >= 4;
     return el('div', { class: 'tile' + (flag ? ' flag' : ''), title: desc }, el('div', { class: 'k' }, `${emo} ${name}`), el('div', { class: 'v', style: 'font-size:18px' }, `${HEALTH_LEVELS[r.v]}${r.estimated ? '*' : ''}`, ' ', pips(r.v, good)), el('div', { class: 's' }, r.why.slice(0, 3).join(' · ') || desc)); }));
   const trend = c.dp24 == null ? '' : c.dp24 <= -4 ? `falling fast (${c.dp24.toFixed(1)} hPa in 24 h)` : c.dp24 <= -1.5 ? `falling (${c.dp24.toFixed(1)} hPa in 24 h)` : c.dp24 >= 4 ? `rising fast (+${c.dp24.toFixed(1)} hPa in 24 h)` : c.dp24 >= 1.5 ? `rising (+${c.dp24.toFixed(1)} hPa in 24 h)` : 'steady';
   const aqiCat = a => a == null ? '–' : a <= 50 ? 'Good' : a <= 100 ? 'Moderate' : a <= 150 ? 'Unhealthy for sensitive groups' : a <= 200 ? 'Unhealthy' : a <= 300 ? 'Very unhealthy' : 'Hazardous';
@@ -1250,9 +1252,10 @@ function healthSection(d) {
   const pchart = chart({ rows, tz: d.tz, yFmt: v => US() ? v.toFixed(2) : `${Math.round(v)}`, height: 200, dots: false, xLabel: (r, i) => r.isNow ? 'Now' : (new Date(r.t).getUTCHours() % 12 === 0 && i % 6 === 0) || i % 12 === 0 ? fmtDT(r.t, tz).replace(/:\d\d/, '') : '', tipLabel: r => fmtDT(r.t, tz) + (r.isNow ? ' (now)' : r.t < Date.now() ? ' (observed / analysed)' : ' (forecast)'), series: [{ name: `Sea-level pressure (${US() ? 'inHg' : 'hPa'})`, color: C('violet'), kind: 'area', values: pvals, fmt: v => US() ? `${v.toFixed(2)} inHg` : `${v.toFixed(1)} hPa` }] });
   const outlook = el('div', { class: 'chartwrap' }, el('table', { class: 'data narrow health-out' },
     el('thead', {}, el('tr', {}, el('th', { style: 'text-align:left' }, 'Day'), HEALTH_INDEX.map(([k, name, emo]) => el('th', { style: 'text-align:left', title: name }, `${emo} ${name.split(' ')[0]}`)))),
-    el('tbody', {}, h.days.map((dy, i) => el('tr', {}, el('td', {}, el('b', {}, dayName(dy.date, i)), el('div', { class: 'note' }, dayMD(dy.date))), HEALTH_INDEX.map(([k]) => { const r = dy.R[k]; return el('td', { title: r.why.join(', ') }, pips(r.v, k === 'outdoors'), el('div', { class: 'note' }, HEALTH_LEVELS[r.v])); }))))));
-  return section('Health & comfort', el('p', { class: 'lede' }, `How the next 24 hours may feel. Scores run 1 (low) to 5 (very high) for symptoms, the same scale Xweather uses; Outdoors runs the other way, 5 is best. Pressure is ${trend || 'steady'}.`),
-    tiles, facts,
+    el('tbody', {}, h.days.map((dy, i) => el('tr', {}, el('td', {}, el('b', {}, dayName(dy.date, i)), el('div', { class: 'note' }, dayMD(dy.date))), HEALTH_INDEX.map(([k]) => { const r = dy.R[k]; return el('td', { title: r.why.join(', ') }, pips(r.v), el('div', { class: 'note' }, HEALTH_LEVELS[r.v])); }))))));
+  const legend = el('div', { class: 'health-legend' }, [1, 2, 3, 4, 5].map(v => el('span', {}, pips(v), ` ${v} ${HEALTH_LEVELS[v]}`)));
+  return section('Health & comfort', el('p', { class: 'lede' }, `Each score says how likely the weather over the next 24 hours is to set off that problem, from 1 (unlikely) to 5 (very likely). Higher always means worse. The small print under each score lists what is driving it. Pressure is ${trend || 'steady'}.`),
+    legend, tiles, facts,
     el('div', { style: 'margin-top:14px' }, el('h3', {}, 'Barometric pressure, past 48 h and next 48 h'), pchart),
     el('div', { style: 'margin-top:14px' }, el('h3', {}, '7-day outlook'), outlook),
     el('p', { class: 'note', style: 'margin-top:10px' }, 'Computed in the page from Open-Meteo hourly pressure, humidity, temperature, UV, wind, rain and storm energy, plus the Open-Meteo air-quality feed (US AQI, PM2.5, ozone, dust). ', h.pollenMeasured ? 'Pollen is measured (Copernicus CAMS).' : '* Pollen is an estimate from season and weather; no free US pollen-count feed exists. ', 'These are guides, not medical advice; your own triggers matter more than any index.'));
