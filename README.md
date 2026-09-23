@@ -16,7 +16,7 @@ Live: https://weather-now.exe.xyz
 | Map | Leaflet map with NOAA nowCOAST layers: radar loop, lightning density, GOES infrared clouds, forecast temperature, feels-like, rain chance, rain amount, snow, cloud cover, wind speed, gusts, wind barbs, humidity, and NWS alert polygons; time slider and play button; click for the value at a point or to load that point's forecast |
 | 10-day | Day cards with NWS text, icons, highs and lows for seven days and Open-Meteo model guidance for days 8 to 10; highs/lows, precipitation and wind charts across all ten days |
 | Health & comfort | Xweather-style 1–5 indices for migraine, arthritis, sinus, allergy (pollen), asthma & air quality, cold & flu, UV and outdoor discomfort, all on the same higher-is-worse scale, with the reasons behind each score; current pressure trend, AQI, humidity, UV; a 96-hour barometric pressure chart; a 7-day outlook table |
-| Overview (sky block) | Live map of the ISS, Tiangong, Hubble, NOAA-20, Terra, Landsat 9 and GOES-19 from CelesTrak orbital elements (satellite.js SGP4), with ground track, horizon footprint and day/night terminator; naked-eye pass predictions over the location for 10 days; tonight's sky and a 10-day calendar of sun/moon times, moon phase, visible planets, moon phases, equinoxes, meteor-shower peaks, eclipses and conjunctions |
+| Overview (sky block) | Live map of the ISS, Tiangong, Hubble, NOAA-20, Terra, Landsat 9 and GOES-19, plus the whole Starlink constellation (count overhead, optional 10,000-dot map layer, next visible pass of the newest launch train) from CelesTrak orbital elements (satellite.js SGP4), with ground track, horizon footprint and day/night terminator; naked-eye pass predictions over the location for 10 days; tonight's sky and a 10-day calendar of sun/moon times, moon phase, visible planets, moon phases, equinoxes, meteor-shower peaks, eclipses and conjunctions |
 | NESDIS imagery (sky sub-tab) | Live GOES-East/West imagery from NOAA NESDIS STAR: local sector, CONUS or full disk; GeoColor, clean IR, visible, water vapor, shortwave IR, air mass, sandwich, fire temperature, dust; still or animated loop |
 | Astronomy picture of the day | NASA APOD at the bottom of every view, with explanation and full-resolution link |
 | Daily learning & Hebrew calendar | Below the picture on every view: Hebrew date (after-sunset aware), parasha, next candle lighting and havdalah for the location, today's holiday, the Sefaria learning cycles Tiby follows (Daf Yomi first; 929, Daily Rambam, Daf a Week, Arukh HaShulchan Yomi and Yerushalmi Yomi are hidden) linked to the text, and a two-week list of holidays and Shabbat times |
@@ -157,6 +157,9 @@ the VM's proxy port. See the script for the one-time nginx setup.
 - GOES imagery comes straight from `cdn.star.nesdis.noaa.gov`; the local sector
   is picked from the location's latitude and longitude.
 
+- Starlink elements (about 10,700 satellites, 1.8 MB) are fetched on the VM every
+  six hours into `starlink.tle` by `deploy.sh`'s cron job; the page propagates
+  them locally every 10 s and only draws them on request.
 - Satellite positions come from CelesTrak two-line elements (cached six hours)
   propagated in the browser with satellite.js. A pass counts as naked-eye when
   the observer's sun is below -6° and the satellite is outside Earth's shadow,

@@ -263,7 +263,7 @@ footer{margin-top:28px;font-size:13px;color:var(--muted);line-height:1.6}
 <script>
 'use strict';
 const API = 'https://api.weather.gov';
-const BUILD = '2026-09-23.1';
+const BUILD = '2026-09-23.2';
 const HOUR = 3600e3;
 const $ = s => document.querySelector(s);
 function el(tag, attrs = {}, ...kids) {
@@ -1053,6 +1053,32 @@ function computePasses(satrec, lat, lon, from, to, onDone) {
 }
 const compass8 = az => ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(((az * DEG) % 360) / 45) % 8];
 function nightPolygon(t) { const d = jdays(t), s = sunCoords(d), sunLon = (((s.ra - sidereal(d, 0)) * DEG % 360) + 540) % 360 - 180, pts = []; for (let lon = -180; lon <= 180; lon += 3) pts.push([Math.atan(-Math.cos(rad * (lon - sunLon)) / Math.tan(s.dec)) * DEG, lon]); const pole = s.dec > 0 ? -89.9 : 89.9; pts.push([pole, 180], [pole, -180]); return pts; }
+// ---------- generic in-place tab group ----------
+function tabGroup(storageKey, panels, dflt) {
+  let cur = localStorage.getItem(storageKey) || dflt || panels[0][0]; if (!panels.some(x => x[0] === cur)) cur = panels[0][0];
+  const nav = el('nav', { class: 'tabs sub', role: 'tablist' });
+  const show = k => { cur = k; localStorage.setItem(storageKey, k); panels.forEach(([pk, , pe]) => { pe.hidden = pk !== k; }); [...nav.children].forEach((b, i) => b.setAttribute('aria-selected', panels[i][0] === k)); if (nav.getBoundingClientRect().top < 0) nav.scrollIntoView({ block: 'start' }); };
+  panels.forEach(([k, name]) => nav.append(el('button', { role: 'tab', 'aria-selected': k === cur, onclick: () => show(k) }, name)));
+  panels.forEach(([k, , pe]) => { pe.hidden = k !== cur; });
+  return el('div', {}, nav, ...panels.map(x => x[2]));
+}
+// ---------- Starlink constellation (VM-cached CelesTrak feed, refreshed every 6 h) ----------
+const starlink = { recs: null, names: null, launches: null, train: null, trainPass: undefined, summary: '', count: 0, loading: false, timer: null, show: localStorage.getItem('wx.starlink') === '1' };
+async function loadStarlink() {
+  if (starlink.recs || starlink.loading) return starlink.recs; starlink.loading = true;
+  let txt = null;
+  for (const u of ['starlink.tle', 'https://weather-now.exe.xyz/starlink.tle', 'https://celestrak.org/NORAD/elements/gp.php?GROUP=starlink&FORMAT=TLE']) { try { const r = await fetch(u); if (r.ok) { const t = await r.text(); if (t.includes('\n1 ')) { txt = t; break; } } } catch (e) { } }
+  starlink.loading = false; if (!txt) return null;
+  const L = txt.trim().split('\n').map(x => x.trim()), recs = [], names = [], launches = [];
+  for (let i = 0; i + 2 < L.length; i += 3) { if (!L[i + 1].startsWith('1 ')) continue; try { recs.push(satellite.twoline2satrec(L[i + 1], L[i + 2])); names.push(L[i]); launches.push(L[i + 1].slice(9, 14)); } catch (e) { } }
+  starlink.recs = recs; starlink.names = names; starlink.launches = launches; starlink.count = recs.length;
+  const key = d => { const y = +d.slice(0, 2), n = +d.slice(2, 5); return (y < 57 ? 2000 + y : 1900 + y) * 1000 + n; };
+  let best = -1; launches.forEach(d => { const k = key(d); if (k > best) best = k; });
+  const idx = launches.map((d, i) => key(d) === best ? i : -1).filter(i => i >= 0);
+  if (idx.length) starlink.train = { idx, desig: launches[idx[0]], n: idx.length };
+  return recs;
+}
+
 function crossing(t0, t1, fn, target) { // first time in [t0,t1] where fn crosses target downward (minute steps, then bisect)
   let prev = fn(t0); for (let t = t0 + 60e3; t <= t1; t += 60e3) { const v = fn(t); if ((prev - target) * (v - target) <= 0) { let lo = t - 60e3, hi = t; for (let i = 0; i < 12; i++) { const m = (lo + hi) / 2; if ((fn(lo) - target) * (fn(m) - target) <= 0) hi = m; else lo = m; } return (lo + hi) / 2; } prev = v; } return null;
 }
@@ -1152,6 +1178,9 @@ function skyPanels(d, cal) {
           el('td', {}, `${s.emoji} ${s.name}`, el('div', { class: 'note' }, s.about)), el('td', {}, `${Math.abs(g.lat).toFixed(1)}°${g.lat >= 0 ? 'N' : 'S'} ${Math.abs(g.lon).toFixed(1)}°${g.lon >= 0 ? 'E' : 'W'}`), el('td', {}, US() ? `${Math.round(g.alt * 0.621371).toLocaleString()} mi` : `${Math.round(g.alt).toLocaleString()} km`), el('td', {}, g.speed ? (US() ? `${(g.speed * 2236.94).toLocaleString(undefined, { maximumFractionDigits: 0 })} mph` : `${g.speed.toFixed(2)} km/s`) : '–'),
           el('td', {}, lk && lk.el > 0 ? el('b', { style: 'color:var(--accent)' }, `Above horizon · ${Math.round(lk.el * DEG)}° ${compass8(lk.az)}`) : 'Below horizon'), el('td', {}, next ? `${fmtDT(next.visStart, tz)} · ${Math.round(next.visMax[1].el * DEG)}° max` : s.pass ? (skyState.passes[s.id] ? 'none in 10 days' : 'computing…') : '–')));
       });
+      { const t = starlink.train, p = starlink.trainPass;
+        rowsEl.append(el('tr', {}, el('td', {}, '🛰️ Starlink', el('div', { class: 'note' }, starlink.count ? `${starlink.count.toLocaleString()} satellites tracked` : 'SpaceX internet constellation')), el('td', {}, 'whole constellation'), el('td', {}, US() ? '~340 mi' : '~550 km'), el('td', {}, US() ? '~17,000 mph' : '~7.6 km/s'), el('td', {}, starlink.summary || '…'),
+          el('td', {}, t ? (p ? el('span', {}, `newest train (launch 20${t.desig.slice(0, 2)}-${t.desig.slice(2, 5)}, ${t.n} sats): `, el('b', { style: 'color:var(--accent)' }, fmtDT(p.visStart, tz)), ` ${compass8(p.startAz)} → ${compass8(p.endAz)}, ${Math.round(p.visMax[1].el * DEG)}° max`) : p === false ? `newest train (${t.n} sats, launch 20${t.desig.slice(0, 2)}-${t.desig.slice(2, 5)}) has no visible pass in 36 h` : 'computing train pass…') : '–'))); }
       if (force || now - lastNight > 60e3) { night.setLatLngs(nightPolygon(now)); lastNight = now; }
       const sel = recs[skyState.selected] || recs[25544]; if (sel && (force || !track || now % 60e3 < 2100)) {
         const segs = [[]]; for (let t = now - 45 * 60e3; t <= now + 95 * 60e3; t += 60e3) { const g = satGeo(sel, t); if (!g) continue; const last = segs[segs.length - 1]; if (last.length && Math.abs(g.lon - last[last.length - 1][1]) > 180) segs.push([]); segs[segs.length - 1].push([g.lat, g.lon]); }
@@ -1161,6 +1190,28 @@ function skyPanels(d, cal) {
     };
     tick(true); skyState.timer = setInterval(() => tick(false), 2000);
     setTimeout(() => { try { map.invalidateSize(); } catch (e) { } }, 50);
+    // Starlink: whole-constellation summary, optional dots on the map, newest launch train
+    map.createPane('sl'); map.getPane('sl').style.zIndex = 340;
+    let slMarkers = null;
+    satTable.append(el('label', { class: 'chk', style: 'margin-top:8px' }, el('input', { type: 'checkbox', checked: starlink.show || null, onchange: e => { starlink.show = e.target.checked; localStorage.setItem('wx.starlink', starlink.show ? '1' : '0'); slTick(); } }), 'Show every Starlink satellite on the map (about 10,000 dots; heavier on phones)'));
+    if (starlink.timer) clearInterval(starlink.timer);
+    const slTick = async () => {
+      if (gen !== skyState.gen) { clearInterval(starlink.timer); starlink.timer = null; return; }
+      starlink.summary = starlink.summary || 'loading constellation…';
+      const recs = await loadStarlink(); if (gen !== skyState.gen) return;
+      if (!recs) { starlink.summary = 'constellation feed unavailable'; return; }
+      const now = Date.now(), date = new Date(now), gmst = satellite.gstime(date), cl = Math.cos(rad * lat), sn = Math.sin(rad * lat), R = 6371; let up = 0, high = 0; const pos = new Array(recs.length);
+      for (let i = 0; i < recs.length; i++) { const pv = satellite.propagate(recs[i], date); if (!pv || !pv.position) { pos[i] = null; continue; } const g = satellite.eciToGeodetic(pv.position, gmst); pos[i] = [g.latitude * DEG, ((g.longitude * DEG + 540) % 360) - 180]; const cd = sn * Math.sin(g.latitude) + cl * Math.cos(g.latitude) * Math.cos(g.longitude - rad * lon), dd = Math.acos(Math.max(-1, Math.min(1, cd))), e = Math.atan2(Math.cos(dd) * (R + g.height) - R, Math.sin(dd) * (R + g.height)); if (e > 0) { up++; if (e > rad * 30) high++; } }
+      starlink.summary = `${up} above your horizon, ${high} higher than 30°`;
+      if (starlink.show) { if (!slMarkers) { const cv = L.canvas({ pane: 'sl' }); slMarkers = pos.map(p => p ? L.circleMarker(p, { renderer: cv, radius: 1.6, stroke: false, fillColor: '#9cc3ff', fillOpacity: .8, interactive: false }).addTo(map) : null); } else slMarkers.forEach((m, i) => { if (m && pos[i]) m.setLatLng(pos[i]); }); }
+      else if (slMarkers) { slMarkers.forEach(m => m && m.remove()); slMarkers = null; }
+      if (starlink.trainPass === undefined && starlink.train) {
+        starlink.trainPass = null; const t = starlink.train, members = [...new Set([t.idx[0], t.idx[Math.floor(t.idx.length / 2)], t.idx[t.idx.length - 1]])]; let pending = members.length;
+        members.forEach(i => computePasses(recs[i], lat, lon, now, now + 36 * HOUR, ps => { const v = ps.find(p => p.visible); if (v && (!starlink.trainPass || v.visStart < starlink.trainPass.visStart)) starlink.trainPass = { ...v, name: starlink.names[i] }; if (--pending === 0 && !starlink.trainPass) starlink.trainPass = false; tick(false); }));
+      }
+      tick(false);
+    };
+    slTick(); starlink.timer = setInterval(slTick, 10000);
     const from = Date.now(), to = from + 10 * dayMs, locKey = `${lat.toFixed(3)},${lon.toFixed(3)}`;
     if (skyState.passKey !== locKey) { skyState.passes = {}; skyState.passKey = locKey; }
     renderPasses(); updateNextPass(d);
@@ -1282,8 +1333,7 @@ function healthSection(d) {
   const legend = el('div', { class: 'health-legend' }, [1, 2, 3, 4, 5].map(v => el('span', {}, pips(v), ` ${v} ${HEALTH_LEVELS[v]}`)));
   return section('Health & comfort', el('p', { class: 'lede' }, `Each score says how likely the weather over the next 24 hours is to set off that problem, from 1 (unlikely) to 5 (very likely). Higher always means worse. The small print under each score lists what is driving it. Pressure is ${trend || 'steady'}.`),
     legend, tiles, facts,
-    el('div', { style: 'margin-top:14px' }, el('h3', {}, 'Barometric pressure, past 48 h and next 48 h'), pchart),
-    el('div', { style: 'margin-top:14px' }, el('h3', {}, '7-day outlook'), outlook),
+    el('div', { style: 'margin-top:14px' }, tabGroup('wx.healthTab', [['pressure', 'Barometric pressure, past 48 h & next 48 h', el('div', {}, pchart)], ['outlook', '7-day outlook', el('div', {}, outlook)]])),
     el('p', { class: 'note', style: 'margin-top:10px' }, 'Computed in the page from Open-Meteo hourly pressure, humidity, temperature, UV, wind, rain and storm energy, plus the Open-Meteo air-quality feed (US AQI, PM2.5, ozone, dust). ', h.pollenMeasured ? 'Pollen is measured (Copernicus CAMS).' : '* Pollen is an estimate from season and weather; no free US pollen-count feed exists. ', 'These are guides, not medical advice; your own triggers matter more than any index.'));
 }
 
@@ -1337,15 +1387,10 @@ function nesdisSection() {
 }
 async function loadApod() {
   const host = document.getElementById('apod'); if (!host) return;
-  const today = new Date().toISOString().slice(0, 10);
   let data = null;
-  try { const c = JSON.parse(localStorage.getItem('wx.apod') || 'null'); if (c && c.date === today) data = c; } catch (e) { }
-  if (!data) {
-    try { const r = await fetch('apod.json', { cache: 'no-cache' }); if (r.ok) { const j = await r.json(); if (j && j.url) data = j; } } catch (e) { }
-  }
-  if (!data || data.date !== today) {
-    try { const r = await fetch('https://api.nasa.gov/planetary/apod?api_key=DEMO_KEY&thumbs=true'); if (r.ok) data = await r.json(); } catch (e) { }
-  }
+  for (const u of ['apod.json', 'https://weather-now.exe.xyz/apod.json']) { try { const r = await fetch(u, { cache: 'no-cache' }); if (r.ok) { const j = await r.json(); if (j && (j.url || j.thumbnail_url)) { data = j; break; } } } catch (e) { } }
+  if (!data) { try { const r = await fetch('https://api.nasa.gov/planetary/apod?api_key=DEMO_KEY&thumbs=true'); if (r.ok) data = await r.json(); } catch (e) { } }
+  if (!data) { try { const c = JSON.parse(localStorage.getItem('wx.apod') || 'null'); if (c && c.url) data = c; } catch (e) { } }
   host.innerHTML = '';
   if (!data || !data.url) { host.append(section('Astronomy picture of the day', el('p', { class: 'empty' }, 'NASA’s picture of the day is not reachable right now. ', el('a', { href: 'https://apod.nasa.gov/apod/astropix.html', target: '_blank', rel: 'noopener' }, 'Open it on apod.nasa.gov')))); return; }
   try { localStorage.setItem('wx.apod', JSON.stringify(data)); } catch (e) { }

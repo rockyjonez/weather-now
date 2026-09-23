@@ -22,6 +22,8 @@ server {
     add_header Cache-Control "no-cache";
     location = /sw.js { add_header Cache-Control "no-cache"; add_header Service-Worker-Allowed "/"; }
     location = /manifest.webmanifest { default_type application/manifest+json; add_header Cache-Control "no-cache"; }
+    location ~ ^/(apod\.json|starlink\.tle)$ { add_header Access-Control-Allow-Origin "*"; add_header Cache-Control "no-cache"; }
+    gzip_types text/plain application/json application/javascript text/css image/svg+xml application/manifest+json;
     add_header X-Content-Type-Options nosniff;
     location / { try_files \$uri \$uri/ /index.html; }
 }
@@ -46,4 +48,19 @@ EOF
 sudo chmod +x /usr/local/bin/apod-fetch.sh
 ( crontab -l 2>/dev/null | grep -v apod-fetch; echo "17 * * * * /usr/local/bin/apod-fetch.sh" ) | crontab -
 [ -s /var/www/weather-now/apod.json ] || /usr/local/bin/apod-fetch.sh'
+# Starlink constellation elements from CelesTrak, every 6 hours (1.8 MB; keeps every viewer off CelesTrak's rate limit).
+ssh "$HOST" 'sudo tee /usr/local/bin/starlink-fetch.sh >/dev/null <<"EOF"
+#!/usr/bin/env bash
+set -u
+OUT=/var/www/weather-now/starlink.tle
+TMP=$(mktemp)
+if curl -fsS -m 120 "https://celestrak.org/NORAD/elements/gp.php?GROUP=starlink&FORMAT=TLE" -o "$TMP" && [ "$(grep -c "^1 " "$TMP")" -gt 1000 ]; then
+  mv "$TMP" "$OUT"; chmod 644 "$OUT"
+else
+  rm -f "$TMP"
+fi
+EOF
+sudo chmod +x /usr/local/bin/starlink-fetch.sh
+( crontab -l 2>/dev/null | grep -v starlink-fetch; echo "23 */6 * * * /usr/local/bin/starlink-fetch.sh" ) | crontab -
+[ -s /var/www/weather-now/starlink.tle ] || /usr/local/bin/starlink-fetch.sh'
 echo "deployed to https://${HOST}"
