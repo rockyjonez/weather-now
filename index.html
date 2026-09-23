@@ -38,6 +38,7 @@
   --glow:none; --vortex1:#c9d8f2; --vortex2:#d9d2f0; --ring:rgba(0,59,111,.05);
 }
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 html,body{margin:0;padding:0}
 body{background:radial-gradient(ellipse 90% 60% at 50% -10%,var(--vortex1) 0%,transparent 60%),radial-gradient(circle at 85% 105%,var(--vortex2) 0%,transparent 45%),var(--bg);background-attachment:fixed;color:var(--text);font:15px/1.45 "Exo 2",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;min-height:100vh}
 body::before{content:"";position:fixed;inset:-20vh -20vw;pointer-events:none;z-index:-1;background:repeating-radial-gradient(circle at 50% 40%,transparent 0 54px,var(--ring) 54px 56px);opacity:.9;mask-image:radial-gradient(circle at 50% 40%,#000 0%,transparent 75%);-webkit-mask-image:radial-gradient(circle at 50% 40%,#000 0%,transparent 75%)}
@@ -262,7 +263,7 @@ footer{margin-top:28px;font-size:13px;color:var(--muted);line-height:1.6}
 <script>
 'use strict';
 const API = 'https://api.weather.gov';
-const BUILD = '2026-09-22.7';
+const BUILD = '2026-09-23.1';
 const HOUR = 3600e3;
 const $ = s => document.querySelector(s);
 function el(tag, attrs = {}, ...kids) {
@@ -1173,6 +1174,7 @@ function skyPanels(d, cal) {
     subs.forEach(([k, , sec]) => { sec.hidden = k !== key; });
     [...subnav.children].forEach((b, i) => b.setAttribute('aria-selected', subs[i][0] === key));
     if (key === 'sats' && skyState.map) setTimeout(() => { try { skyState.map.invalidateSize(); } catch (e) { } }, 0);
+    if (subnav.getBoundingClientRect().top < 0) subnav.scrollIntoView({ block: 'start' });
   };
   subs.forEach(([k, name]) => subnav.append(el('button', { role: 'tab', 'aria-selected': k === skyState.sub, onclick: () => showSub(k) }, name)));
   subs.forEach(([k, , sec]) => { sec.hidden = k !== skyState.sub; });
@@ -1456,7 +1458,7 @@ async function loadDailyLearning(d) {
       const panels = [['daf', 'Daf Yomi', cal.length ? learn : el('p', { class: 'empty' }, 'Sefaria’s calendar is not reachable right now.')], ['dates', 'Hebrew date & candles', el('div', {}, tiles)], ['weeks', 'Next two weeks', upcoming.length ? el('div', { class: 'chartwrap' }, el('table', { class: 'data narrow' }, el('tbody', {}, upRows))) : el('p', { class: 'empty' }, 'Nothing in the next two weeks.')]];
       let cur = localStorage.getItem('wx.learnTab') || 'daf'; if (!panels.some(x => x[0] === cur)) cur = 'daf';
       const nav = el('nav', { class: 'tabs sub', role: 'tablist', 'aria-label': 'Calendar views' });
-      const show = k => { cur = k; localStorage.setItem('wx.learnTab', k); panels.forEach(([pk, , pe]) => { pe.hidden = pk !== k; }); [...nav.children].forEach((b, i) => b.setAttribute('aria-selected', panels[i][0] === k)); };
+      const show = k => { cur = k; localStorage.setItem('wx.learnTab', k); panels.forEach(([pk, , pe]) => { pe.hidden = pk !== k; }); [...nav.children].forEach((b, i) => b.setAttribute('aria-selected', panels[i][0] === k)); if (nav.getBoundingClientRect().top < 0) nav.scrollIntoView({ block: 'start' }); };
       panels.forEach(([k, name]) => nav.append(el('button', { role: 'tab', 'aria-selected': k === cur, onclick: () => show(k) }, name)));
       panels.forEach(([k, , pe]) => { pe.hidden = k !== cur; });
       return el('div', {}, nav, ...panels.map(x => x[2]));
