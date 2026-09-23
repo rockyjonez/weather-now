@@ -256,7 +256,7 @@ footer{margin-top:28px;font-size:13px;color:var(--muted);line-height:1.6}
 <script>
 'use strict';
 const API = 'https://api.weather.gov';
-const BUILD = '2026-09-22.4';
+const BUILD = '2026-09-22.5';
 const HOUR = 3600e3;
 const $ = s => document.querySelector(s);
 function el(tag, attrs = {}, ...kids) {
@@ -1435,7 +1435,8 @@ async function loadDailyLearning(d) {
     parasha ? tile('This week', parasha.title.replace('Parashat ', ''), parasha.hebrew) : null,
     ...nextTimes.map(i => tile(i.category === 'candles' ? 'Candle lighting' : 'Havdalah', fmtTime(Date.parse(i.date), tz), `${dayName(i.date.slice(0, 10), i.date.slice(0, 10) === today ? 0 : 9)} · ${i.memo || i.title.split(':')[0]}`)),
     todayHol.length ? tile('Today', todayHol.map(h => h.title).join(', '), todayHol[0].hebrew, !!todayHol[0].yomtov) : null);
-  const cal = sef && sef.calendar_items ? sef.calendar_items : [];
+  const HIDE = new Set(['929', 'Daily Rambam (3 Chapters)', 'Daily Rambam', 'Daf a Week', 'Arukh HaShulchan Yomi', 'Yerushalmi Yomi']);
+  const cal = (sef && sef.calendar_items ? sef.calendar_items : []).filter(c => !HIDE.has(c.title.en));
   const daf = cal.find(c => c.title.en === 'Daf Yomi');
   const learn = el('div', { class: 'learn' }, [...(daf ? [daf] : []), ...cal.filter(c => c !== daf)].map(c => el('a', { class: 'learn-item' + (c === daf ? ' daf' : ''), href: `https://www.sefaria.org/${c.url}`, target: '_blank', rel: 'noopener' },
     el('div', { class: 'k' }, c.title.en), el('div', { class: 'v' }, c.displayValue.en), c.displayValue.he ? el('div', { class: 'he', dir: 'rtl', lang: 'he' }, c.displayValue.he) : null,
