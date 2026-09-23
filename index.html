@@ -256,7 +256,7 @@ footer{margin-top:28px;font-size:13px;color:var(--muted);line-height:1.6}
 <script>
 'use strict';
 const API = 'https://api.weather.gov';
-const BUILD = '2026-09-22.5';
+const BUILD = '2026-09-22.6';
 const HOUR = 3600e3;
 const $ = s => document.querySelector(s);
 function el(tag, attrs = {}, ...kids) {
@@ -1446,9 +1446,16 @@ async function loadDailyLearning(d) {
   host.append(el('section', { class: 'card', 'data-container': 'Daily learning' },
     el('h2', {}, 'Daily learning & Hebrew calendar'),
     el('p', { class: 'lede' }, `Today’s learning cycles from Sefaria and the Hebrew calendar for ${state.label || 'this location'}${israel ? ' (Israel schedule)' : ' (Diaspora schedule)'}. Candle-lighting times use sunset here, 18 minutes before.`),
-    tiles,
-    cal.length ? el('div', { style: 'margin-top:14px' }, el('h3', {}, 'Learning today'), learn) : el('p', { class: 'empty' }, 'Sefaria’s calendar is not reachable right now.'),
-    upcoming.length ? el('div', { style: 'margin-top:14px' }, el('h3', {}, 'Next two weeks'), el('div', { class: 'chartwrap' }, el('table', { class: 'data narrow' }, el('tbody', {}, upRows)))) : null,
+    cal.length ? el('div', {}, el('h3', {}, 'Learning today'), learn) : el('p', { class: 'empty' }, 'Sefaria’s calendar is not reachable right now.'),
+    (() => {
+      const panels = [['dates', 'Hebrew date & candles', el('div', {}, tiles)], ['weeks', 'Next two weeks', upcoming.length ? el('div', { class: 'chartwrap' }, el('table', { class: 'data narrow' }, el('tbody', {}, upRows))) : el('p', { class: 'empty' }, 'Nothing in the next two weeks.')]];
+      let cur = localStorage.getItem('wx.learnTab') || 'dates'; if (!panels.some(x => x[0] === cur)) cur = 'dates';
+      const nav = el('nav', { class: 'tabs sub', role: 'tablist', 'aria-label': 'Calendar views', style: 'margin-top:14px' });
+      const show = k => { cur = k; localStorage.setItem('wx.learnTab', k); panels.forEach(([pk, , pe]) => { pe.hidden = pk !== k; }); [...nav.children].forEach((b, i) => b.setAttribute('aria-selected', panels[i][0] === k)); };
+      panels.forEach(([k, name]) => nav.append(el('button', { role: 'tab', 'aria-selected': k === cur, onclick: () => show(k) }, name)));
+      panels.forEach(([k, , pe]) => { pe.hidden = k !== cur; });
+      return el('div', {}, nav, ...panels.map(x => x[2]));
+    })(),
     el('p', { class: 'note', style: 'margin-top:10px' }, 'Sources: ', el('a', { href: 'https://www.sefaria.org/calendars', target: '_blank', rel: 'noopener' }, 'Sefaria calendars'), ' and ', el('a', { href: 'https://www.hebcal.com/', target: '_blank', rel: 'noopener' }, 'Hebcal'), '. Learning links open the text on Sefaria.')));
 }
 
