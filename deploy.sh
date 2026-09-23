@@ -20,7 +20,6 @@ server {
     root /var/www/weather-now;
     index index.html;
     add_header Cache-Control "no-cache";
-    types { application/manifest+json webmanifest; }
     location = /sw.js { add_header Cache-Control "no-cache"; add_header Service-Worker-Allowed "/"; }
     add_header X-Content-Type-Options nosniff;
     location / { try_files \$uri \$uri/ /index.html; }
