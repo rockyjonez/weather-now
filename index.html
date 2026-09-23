@@ -170,6 +170,16 @@ table.data tr.night td{background:var(--night)}
 .health-legend .pips{margin:0 2px 0 0}
 .tiles.health .s{min-height:2.4em}
 .health-out td{vertical-align:top}
+.learn{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.learn-item{display:block;background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;color:var(--text);text-decoration:none}
+.learn-item:hover{border-color:var(--accent)}
+.learn-item .k{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.14em}
+.learn-item .v{font-weight:600;margin-top:3px}
+.learn-item .he{font-size:14px;color:var(--text2);margin-top:2px}
+.learn-item .s{font-size:12px;color:var(--text2);margin-top:6px}
+.learn-item.daf{border-left:4px solid var(--accent)}
+.learn-item.daf .v{font-family:"Audiowide","Exo 2",sans-serif;font-weight:400;font-size:18px;color:var(--amber2)}
+[data-theme="light"] .learn-item.daf .v{color:var(--tardis)}
 .apod img{width:100%;max-width:1000px;border-radius:10px;border:1px solid var(--line);display:block}
 .apod-video{position:relative;padding-top:56.25%;max-width:1000px}
 .apod-video iframe{position:absolute;inset:0;width:100%;height:100%;border:0;border-radius:10px}
@@ -238,6 +248,7 @@ footer{margin-top:28px;font-size:13px;color:var(--muted);line-height:1.6}
   <div class="view" id="view" role="tabpanel"></div>
 
   <div id="apod" style="margin-top:14px"></div>
+  <div id="learn" style="margin-top:14px"></div>
   <footer data-container="Footer" id="foot"></footer>
 </div>
 <div class="tip" id="tip" hidden></div>
@@ -245,7 +256,7 @@ footer{margin-top:28px;font-size:13px;color:var(--muted);line-height:1.6}
 <script>
 'use strict';
 const API = 'https://api.weather.gov';
-const BUILD = '2026-09-22.3';
+const BUILD = '2026-09-22.4';
 const HOUR = 3600e3;
 const $ = s => document.querySelector(s);
 function el(tag, attrs = {}, ...kids) {
@@ -391,6 +402,7 @@ async function load(lat, lon, label, remember) {
     state.data = assemble({ pts: p, grid: grid.properties, hourly: hourly && hourly.properties, obs, alerts: alerts.features || [], lat, lon, dailyNws: dailyNws && dailyNws.properties, om, omH, aq });
     }
     state.updated = Date.now();
+    loadDailyLearning(state.data);
     if (remember) localStorage.setItem('wx.loc2', JSON.stringify({ lat, lon, label: state.label }));
   } catch (e) {
     state.error = `Could not load a forecast for this point (${e.message}). The NWS covers the United States; Open-Meteo covers everywhere else.`;
@@ -1393,6 +1405,51 @@ const MAP_LAYERS_INTL = [
   { key: 'satellite', name: 'Clouds (satellite)', ws: 'satellite', layer: 'satellite:global_longwave_imagery_mosaic', kind: 'obs', loop: 60, about: 'Global infrared satellite mosaic: brighter means colder, higher cloud tops. Works at night.' }
 ];
 const activeMapLayers = () => state.data && state.data.intl ? MAP_LAYERS_INTL.filter(l => !l.only || l.only === state.data.intl.name) : MAP_LAYERS;
+
+// ---------- Daily learning: Sefaria calendars + Hebcal (Hebrew date, parasha, candle lighting, holidays) ----------
+const inIsrael = (lat, lon) => lat >= 29.4 && lat <= 33.4 && lon >= 34.2 && lon <= 35.95;
+let learnKey = null;
+async function loadDailyLearning(d) {
+  const host = document.getElementById('learn'); if (!host || !d) return;
+  const lat = state.lat, lon = state.lon, tz = d.tz;
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: tz });
+  const afterSunset = !!(d.sun && Date.now() > d.sun.sunset);
+  const key = `${lat.toFixed(2)},${lon.toFixed(2)},${today},${afterSunset}`;
+  if (learnKey === key) return; learnKey = key;
+  const israel = inIsrael(lat, lon);
+  const end = new Date(Date.now() + 14 * dayMs).toLocaleDateString('en-CA', { timeZone: tz });
+  const hebDate = afterSunset ? new Date(Date.now() + dayMs).toLocaleDateString('en-CA', { timeZone: tz }) : today;
+  const [sef, heb, conv] = await Promise.all([
+    fetch(`https://www.sefaria.org/api/calendars?diaspora=${israel ? 0 : 1}&timezone=${encodeURIComponent(tz)}`).then(r => r.ok ? r.json() : null).catch(() => null),
+    fetch(`https://www.hebcal.com/hebcal?v=1&cfg=json&maj=on&min=on&mod=on&nx=on&ss=on&mf=on&c=on&M=on&s=on&o=on&geo=pos&latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}&tzid=${encodeURIComponent(tz)}&start=${today}&end=${end}${israel ? '&i=on' : ''}`).then(r => r.ok ? r.json() : null).catch(() => null),
+    fetch(`https://www.hebcal.com/converter?cfg=json&date=${hebDate}&g2h=1&strict=1`).then(r => r.ok ? r.json() : null).catch(() => null)
+  ]);
+  if (learnKey !== key) return;
+  host.innerHTML = '';
+  const items = (heb && heb.items) || [];
+  const todayHol = items.filter(i => i.date.slice(0, 10) === today && i.category === 'holiday');
+  const nextTimes = items.filter(i => (i.category === 'candles' || i.category === 'havdalah') && Date.parse(i.date) > Date.now()).slice(0, 2);
+  const parasha = items.find(i => i.category === 'parashat');
+  const tiles = el('div', { class: 'tiles' },
+    conv && conv.hebrew ? tile('Hebrew date', el('span', { dir: 'rtl', lang: 'he' }, conv.hebrew), `${conv.hd} ${conv.hm} ${conv.hy}${afterSunset ? ' · after sunset' : ''}`) : null,
+    parasha ? tile('This week', parasha.title.replace('Parashat ', ''), parasha.hebrew) : null,
+    ...nextTimes.map(i => tile(i.category === 'candles' ? 'Candle lighting' : 'Havdalah', fmtTime(Date.parse(i.date), tz), `${dayName(i.date.slice(0, 10), i.date.slice(0, 10) === today ? 0 : 9)} · ${i.memo || i.title.split(':')[0]}`)),
+    todayHol.length ? tile('Today', todayHol.map(h => h.title).join(', '), todayHol[0].hebrew, !!todayHol[0].yomtov) : null);
+  const cal = sef && sef.calendar_items ? sef.calendar_items : [];
+  const daf = cal.find(c => c.title.en === 'Daf Yomi');
+  const learn = el('div', { class: 'learn' }, [...(daf ? [daf] : []), ...cal.filter(c => c !== daf)].map(c => el('a', { class: 'learn-item' + (c === daf ? ' daf' : ''), href: `https://www.sefaria.org/${c.url}`, target: '_blank', rel: 'noopener' },
+    el('div', { class: 'k' }, c.title.en), el('div', { class: 'v' }, c.displayValue.en), c.displayValue.he ? el('div', { class: 'he', dir: 'rtl', lang: 'he' }, c.displayValue.he) : null,
+    c.description && c.description.en ? el('div', { class: 's' }, c.description.en.length > 160 ? c.description.en.slice(0, 157) + '…' : c.description.en) : null)));
+  const upcoming = items.filter(i => ['holiday', 'candles', 'havdalah', 'roshchodesh', 'parashat'].includes(i.category) && i.date.slice(0, 10) >= today);
+  const upRows = upcoming.map(i => el('tr', { class: i.yomtov ? '' : '' }, el('td', {}, dayMD(i.date.slice(0, 10)), el('span', { class: 'note' }, ` ${dayShort(i.date.slice(0, 10))}`)), el('td', { style: 'text-align:left' }, i.category === 'candles' || i.category === 'havdalah' ? `${i.category === 'candles' ? '🕯️ Candle lighting' : '✨ Havdalah'} ${fmtTime(Date.parse(i.date), tz)}` : i.title, i.memo && i.category !== 'holiday' ? el('span', { class: 'note' }, ` · ${i.memo}`) : null), el('td', { dir: 'rtl', lang: 'he', style: 'text-align:right' }, i.hebrew || '')));
+  host.append(el('section', { class: 'card', 'data-container': 'Daily learning' },
+    el('h2', {}, 'Daily learning & Hebrew calendar'),
+    el('p', { class: 'lede' }, `Today’s learning cycles from Sefaria and the Hebrew calendar for ${state.label || 'this location'}${israel ? ' (Israel schedule)' : ' (Diaspora schedule)'}. Candle-lighting times use sunset here, 18 minutes before.`),
+    tiles,
+    cal.length ? el('div', { style: 'margin-top:14px' }, el('h3', {}, 'Learning today'), learn) : el('p', { class: 'empty' }, 'Sefaria’s calendar is not reachable right now.'),
+    upcoming.length ? el('div', { style: 'margin-top:14px' }, el('h3', {}, 'Next two weeks'), el('div', { class: 'chartwrap' }, el('table', { class: 'data narrow' }, el('tbody', {}, upRows)))) : null,
+    el('p', { class: 'note', style: 'margin-top:10px' }, 'Sources: ', el('a', { href: 'https://www.sefaria.org/calendars', target: '_blank', rel: 'noopener' }, 'Sefaria calendars'), ' and ', el('a', { href: 'https://www.hebcal.com/', target: '_blank', rel: 'noopener' }, 'Hebcal'), '. Learning links open the text on Sefaria.')));
+}
 
 // ---------- map view (NOAA nowCOAST WMS + Leaflet) ----------
 const NOWCOAST = 'https://nowcoast.noaa.gov/geoserver';

@@ -19,6 +19,7 @@ Live: https://weather-now.exe.xyz
 | Overview (sky block) | Live map of the ISS, Tiangong, Hubble, NOAA-20, Terra, Landsat 9 and GOES-19 from CelesTrak orbital elements (satellite.js SGP4), with ground track, horizon footprint and day/night terminator; naked-eye pass predictions over the location for 10 days; tonight's sky and a 10-day calendar of sun/moon times, moon phase, visible planets, moon phases, equinoxes, meteor-shower peaks, eclipses and conjunctions |
 | NESDIS imagery (sky sub-tab) | Live GOES-East/West imagery from NOAA NESDIS STAR: local sector, CONUS or full disk; GeoColor, clean IR, visible, water vapor, shortwave IR, air mass, sandwich, fire temperature, dust; still or animated loop |
 | Astronomy picture of the day | NASA APOD at the bottom of every view, with explanation and full-resolution link |
+| Daily learning & Hebrew calendar | Below the picture on every view: Hebrew date (after-sunset aware), parasha, next candle lighting and havdalah for the location, today's holiday, every Sefaria daily learning cycle (Daf Yomi first) linked to the text, and a two-week list of holidays and Shabbat times |
 | Temperature | Air, feels-like and dew point lines; heat index / wind chill; NWS HeatRisk; heat and cold alerts |
 | Rain | Probability of precipitation, liquid amount per hour, precipitation type and coverage, flood alerts |
 | Clouds & sky | Sky cover, relative humidity, visibility and ceiling where published, sunrise and sunset |
@@ -124,6 +125,11 @@ Then open `http://localhost:8765/?lat=37.7749&lon=-122.4194`.
 the VM's proxy port. See the script for the one-time nginx setup.
 
 ## Data notes
+
+- Daily learning comes from the Sefaria calendars API (Diaspora or Israel
+  schedule by location); Hebrew date, parasha, candle lighting, havdalah and
+  holidays come from Hebcal, computed for the location's coordinates and time
+  zone with the default 18-minute candle-lighting offset.
 
 - Health indices are computed in the page from Open-Meteo hourly data (two
   days back, seven ahead: sea-level pressure, humidity, temperature, UV, wind,
