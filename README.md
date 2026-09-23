@@ -111,6 +111,12 @@ point an Android web-widget app (for example a KWGT web tile) at
 https://weather-now.exe.xyz/widget.html for a true home-screen widget. It
 reads the same saved location as the main page and accepts `?lat=&lon=&name=`.
 
+## Sections
+
+Every card heading is a button: click it to fold that section away or open it
+again. What you close is remembered per browser in `localStorage` under
+`wx.closed`, so the page comes back the way you left it.
+
 ## Styling
 
 The look is a Doctor Who fan tribute: TARDIS-blue console panels, amber

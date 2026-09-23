@@ -81,6 +81,13 @@ header.top{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:flex-end;justif
 .banner .chip{font-size:13px;padding:2px 8px;border-radius:999px;border:1px solid var(--line);background:var(--surface2)}
 .banner button{margin-left:auto}
 .card{position:relative;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px 18px;box-shadow:var(--shadow);overflow:hidden}
+.card-head{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;background:none;border:0;padding:0;margin:0 0 6px;text-align:left;color:inherit;cursor:pointer;font:inherit}
+.card-head h2{margin:0}
+.card-head .caret{color:var(--muted);font-size:13px;transition:transform .15s ease;flex:none}
+.card-head[aria-expanded="false"] .caret{transform:rotate(-90deg)}
+.card-head:hover .caret,.card-head:focus-visible .caret{color:var(--accent)}
+.card.closed{padding-bottom:13px}
+.card.closed .card-head{margin-bottom:0}
 .card::before{content:"";position:absolute;left:0;right:0;top:0;height:2px;background:linear-gradient(90deg,transparent,var(--accent) 30%,var(--accent) 70%,transparent);opacity:.7}
 .now{display:grid;grid-template-columns:minmax(220px,1.1fr) 2fr;gap:18px;margin-bottom:14px}
 @media(max-width:760px){.now{grid-template-columns:1fr}}
@@ -172,10 +179,14 @@ table.data tr.night td{background:var(--night)}
 .pips[data-v="1"] i.on,.pips[data-v="2"] i.on{background:var(--s-aqua);border-color:var(--s-aqua)}
 .pips.good[data-v="4"] i.on,.pips.good[data-v="5"] i.on{background:var(--s-aqua);border-color:var(--s-aqua)}
 .pips.good[data-v="1"] i.on,.pips.good[data-v="2"] i.on{background:var(--s-red);border-color:var(--s-red)}
-.tiles.health{grid-template-columns:repeat(auto-fill,minmax(210px,1fr))}
+.tiles.health{grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:7px}
+.tiles.health .tile{padding:7px 9px}
+.tiles.health .k{font-size:10px;letter-spacing:.08em}
+.tiles.health .v{font-size:15px!important;margin-top:1px;display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.tiles.health .pips i{width:7px;height:7px}
 .health-legend{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--text2);margin:0 0 12px}
 .health-legend .pips{margin:0 2px 0 0}
-.tiles.health .s{min-height:2.4em}
+.tiles.health .s{font-size:11px;line-height:1.25;margin-top:1px}
 .health-out td{vertical-align:top}
 .learn{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
 .learn-item{display:block;background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;color:var(--text);text-decoration:none}
@@ -263,7 +274,7 @@ footer{margin-top:28px;font-size:13px;color:var(--muted);line-height:1.6}
 <script>
 'use strict';
 const API = 'https://api.weather.gov';
-const BUILD = '2026-09-23.2';
+const BUILD = '2026-09-23.3';
 const HOUR = 3600e3;
 const $ = s => document.querySelector(s);
 function el(tag, attrs = {}, ...kids) {
@@ -640,7 +651,24 @@ function renderFooter(d) {
 }
 
 // ---------- shared pieces ----------
-const section = (title, ...kids) => el('section', { class: 'card', 'data-container': title }, el('h2', {}, title), ...kids);
+const COLLAPSE_KEY = 'wx.closed';
+const closedSet = () => { try { return new Set(JSON.parse(localStorage.getItem(COLLAPSE_KEY) || '[]')); } catch (e) { return new Set(); } };
+function makeCollapsible(sec, title, kids) {
+  const body = el('div', { class: 'card-body' }, ...kids);
+  const closed = closedSet().has(title);
+  const head = el('button', { class: 'card-head', type: 'button', 'aria-expanded': !closed, title: 'Show or hide this section' }, el('h2', {}, title), el('span', { class: 'caret', 'aria-hidden': 'true' }, '\u25be'));
+  head.onclick = () => {
+    const open = head.getAttribute('aria-expanded') === 'true';
+    head.setAttribute('aria-expanded', !open); body.hidden = open; sec.classList.toggle('closed', open);
+    const set = closedSet(); if (open) set.add(title); else set.delete(title);
+    try { localStorage.setItem(COLLAPSE_KEY, JSON.stringify([...set])); } catch (e) { }
+    if (!open) sec.dispatchEvent(new CustomEvent('section-open', { bubbles: true }));
+  };
+  body.hidden = closed; sec.classList.toggle('closed', closed);
+  sec.append(head, body);
+  return sec;
+}
+const section = (title, ...kids) => makeCollapsible(el('section', { class: 'card', 'data-container': title }), title, kids.filter(Boolean));
 const tile = (k, v, s, flag) => el('div', { class: 'tile' + (flag ? ' flag' : '') }, el('div', { class: 'k' }, k), el('div', { class: 'v' }, v), s ? el('div', { class: 's' }, s) : null);
 function wordsRow(d, get, label) {
   const items = d.rows.map(r => { const w = get(r); return w ? el('div', {}, el('b', {}, r.i === 0 ? 'Now' : fmtHour(r.t, d.tz)), w) : null; }).filter(Boolean);
@@ -1110,6 +1138,7 @@ function skyPanels(d, cal) {
   const dayCell = dy => el('td', {}, el('b', {}, dayName(dy.date, dy.i)), el('div', { class: 'note' }, dayMD(dy.date)));
   // Satellites
   const satSec = section('Satellites over Earth now', el('p', { class: 'lede' }, 'Live positions from current orbital elements, updated every two seconds. The shaded area is night; the circle is the selected satellite’s horizon footprint. Click a row to track that satellite.'), mapHost, satTable);
+  satSec.addEventListener('section-open', () => setTimeout(() => { try { skyState.map && skyState.map.invalidateSize(); } catch (e) { } }, 0));
   // Passes
   const passSec = section(`Passes over ${state.label || 'this location'}, next 10 days`, el('p', { class: 'lede' }, 'A pass is visible to the naked eye when the sky is dark where you stand and the satellite is still lit by the sun. The ISS is the brightest; Tiangong and Hubble are fainter.'),
     el('div', { class: 'mapctl' }, el('label', { class: 'chk' }, el('input', { type: 'checkbox', checked: skyState.visibleOnly || null, onchange: e => { skyState.visibleOnly = e.target.checked; renderPasses(); } }), 'Visible passes only')), passBox);
@@ -1399,12 +1428,11 @@ async function loadApod() {
     const yt = /(?:youtube\.com\/embed\/|youtu\.be\/|youtube\.com\/watch\?v=)([\w-]+)/.exec(data.url || '');
     media = yt ? el('div', { class: 'apod-video' }, el('iframe', { src: `https://www.youtube.com/embed/${yt[1]}`, title: data.title, allow: 'accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture', allowfullscreen: '', loading: 'lazy' })) : el('a', { href: data.url, target: '_blank', rel: 'noopener' }, data.thumbnail_url ? el('img', { src: data.thumbnail_url, alt: data.title }) : `Watch: ${data.title}`);
   } else media = el('a', { href: data.hdurl || data.url, target: '_blank', rel: 'noopener', title: 'Open full resolution' }, el('img', { src: data.url, alt: data.title, loading: 'lazy' }));
-  host.append(el('section', { class: 'card apod', 'data-container': 'Astronomy picture of the day' },
-    el('h2', {}, 'Astronomy picture of the day'),
+  host.append(makeCollapsible(el('section', { class: 'card apod', 'data-container': 'Astronomy picture of the day' }), 'Astronomy picture of the day', [
     el('p', { class: 'lede' }, el('b', {}, data.title), ` · ${dayMD(data.date)} ${data.date.slice(0, 4)}`, data.copyright ? el('span', { class: 'note' }, ` · © ${data.copyright.trim()}`) : null),
     media,
     el('details', { style: 'margin-top:10px' }, el('summary', { style: 'cursor:pointer;color:var(--accent)' }, 'Explanation'), el('p', { style: 'color:var(--text2);margin:8px 0 0' }, data.explanation || '')),
-    el('p', { class: 'note', style: 'margin-top:8px' }, 'NASA Astronomy Picture of the Day. ', el('a', { href: `https://apod.nasa.gov/apod/ap${data.date.slice(2).replace(/-/g, '')}.html`, target: '_blank', rel: 'noopener' }, 'Open on apod.nasa.gov'))));
+    el('p', { class: 'note', style: 'margin-top:8px' }, 'NASA Astronomy Picture of the Day. ', el('a', { href: `https://apod.nasa.gov/apod/ap${data.date.slice(2).replace(/-/g, '')}.html`, target: '_blank', rel: 'noopener' }, 'Open on apod.nasa.gov'))]));
 }
 
 // ---------- outside NWS coverage: Open-Meteo fallback (Canada, Mexico, Brazil and the rest of the world) ----------
@@ -1496,8 +1524,7 @@ async function loadDailyLearning(d) {
     c.description && c.description.en ? el('div', { class: 's' }, c.description.en.length > 160 ? c.description.en.slice(0, 157) + '…' : c.description.en) : null)));
   const upcoming = items.filter(i => ['holiday', 'candles', 'havdalah', 'roshchodesh', 'parashat'].includes(i.category) && i.date.slice(0, 10) >= today);
   const upRows = upcoming.map(i => el('tr', { class: i.yomtov ? '' : '' }, el('td', {}, dayMD(i.date.slice(0, 10)), el('span', { class: 'note' }, ` ${dayShort(i.date.slice(0, 10))}`)), el('td', { style: 'text-align:left' }, i.category === 'candles' || i.category === 'havdalah' ? `${i.category === 'candles' ? '🕯️ Candle lighting' : '✨ Havdalah'} ${fmtTime(Date.parse(i.date), tz)}` : i.title, i.memo && i.category !== 'holiday' ? el('span', { class: 'note' }, ` · ${i.memo}`) : null), el('td', { dir: 'rtl', lang: 'he', style: 'text-align:right' }, i.hebrew || '')));
-  host.append(el('section', { class: 'card', 'data-container': 'Daily learning' },
-    el('h2', {}, 'Daf Yomi & more'),
+  host.append(makeCollapsible(el('section', { class: 'card', 'data-container': 'Daily learning' }), 'Daf Yomi & more', [
     el('p', { class: 'lede' }, `Today’s pages from Sefaria and the calendar for ${state.label || 'this location'}${israel ? ' (Israel schedule)' : ' (Diaspora schedule)'}. Candle-lighting times use sunset here, 18 minutes before.`),
     (() => {
       const panels = [['daf', 'Daf Yomi', cal.length ? learn : el('p', { class: 'empty' }, 'Sefaria’s calendar is not reachable right now.')], ['dates', 'Hebrew date & candles', el('div', {}, tiles)], ['weeks', 'Next two weeks', upcoming.length ? el('div', { class: 'chartwrap' }, el('table', { class: 'data narrow' }, el('tbody', {}, upRows))) : el('p', { class: 'empty' }, 'Nothing in the next two weeks.')]];
@@ -1508,7 +1535,7 @@ async function loadDailyLearning(d) {
       panels.forEach(([k, , pe]) => { pe.hidden = k !== cur; });
       return el('div', {}, nav, ...panels.map(x => x[2]));
     })(),
-    el('p', { class: 'note', style: 'margin-top:10px' }, 'Sources: ', el('a', { href: 'https://www.sefaria.org/calendars', target: '_blank', rel: 'noopener' }, 'Sefaria calendars'), ' and ', el('a', { href: 'https://www.hebcal.com/', target: '_blank', rel: 'noopener' }, 'Hebcal'), '. Learning links open the text on Sefaria.')));
+    el('p', { class: 'note', style: 'margin-top:10px' }, 'Sources: ', el('a', { href: 'https://www.sefaria.org/calendars', target: '_blank', rel: 'noopener' }, 'Sefaria calendars'), ' and ', el('a', { href: 'https://www.hebcal.com/', target: '_blank', rel: 'noopener' }, 'Hebcal'), '. Learning links open the text on Sefaria.')]));
 }
 
 // ---------- map view (NOAA nowCOAST WMS + Leaflet) ----------
@@ -1594,6 +1621,7 @@ function viewMap(d) {
     el('p', { class: 'note', style: 'margin-top:10px' }, 'Click anywhere on the map to read the layer value there or to load the forecast for that point. Weather layers: NOAA nowCOAST, RainViewer and Environment Canada GeoMet. Base map: © OpenStreetMap contributors.'));
   const gen = ++mapState.gen;
   ensureLeaflet().then(() => buildMap(d, def, { host, status, timeBox, legend, gen })).catch(e => { status.textContent = e.message; });
+  sec.addEventListener('section-open', () => setTimeout(() => { try { mapState.map && mapState.map.invalidateSize(); } catch (e) { } }, 0));
   return [sec];
 }
 function buildMap(d, def, ui) {
