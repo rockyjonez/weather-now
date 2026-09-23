@@ -4,7 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Weather Now</title>
-<link rel="icon" href="data:,">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0b1c3a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Weather">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <meta name="description" content="Current conditions and the next 12 hours from the US National Weather Service: temperature, rain, clouds, wind, storms, lightning, snow, fire weather and alerts.">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Audiowide&family=Exo+2:wght@400;600;700&display=swap">
@@ -256,7 +262,7 @@ footer{margin-top:28px;font-size:13px;color:var(--muted);line-height:1.6}
 <script>
 'use strict';
 const API = 'https://api.weather.gov';
-const BUILD = '2026-09-22.6';
+const BUILD = '2026-09-22.7';
 const HOUR = 3600e3;
 const $ = s => document.querySelector(s);
 function el(tag, attrs = {}, ...kids) {
@@ -1444,13 +1450,12 @@ async function loadDailyLearning(d) {
   const upcoming = items.filter(i => ['holiday', 'candles', 'havdalah', 'roshchodesh', 'parashat'].includes(i.category) && i.date.slice(0, 10) >= today);
   const upRows = upcoming.map(i => el('tr', { class: i.yomtov ? '' : '' }, el('td', {}, dayMD(i.date.slice(0, 10)), el('span', { class: 'note' }, ` ${dayShort(i.date.slice(0, 10))}`)), el('td', { style: 'text-align:left' }, i.category === 'candles' || i.category === 'havdalah' ? `${i.category === 'candles' ? '🕯️ Candle lighting' : '✨ Havdalah'} ${fmtTime(Date.parse(i.date), tz)}` : i.title, i.memo && i.category !== 'holiday' ? el('span', { class: 'note' }, ` · ${i.memo}`) : null), el('td', { dir: 'rtl', lang: 'he', style: 'text-align:right' }, i.hebrew || '')));
   host.append(el('section', { class: 'card', 'data-container': 'Daily learning' },
-    el('h2', {}, 'Daily learning & Hebrew calendar'),
-    el('p', { class: 'lede' }, `Today’s learning cycles from Sefaria and the Hebrew calendar for ${state.label || 'this location'}${israel ? ' (Israel schedule)' : ' (Diaspora schedule)'}. Candle-lighting times use sunset here, 18 minutes before.`),
-    cal.length ? el('div', {}, el('h3', {}, 'Learning today'), learn) : el('p', { class: 'empty' }, 'Sefaria’s calendar is not reachable right now.'),
+    el('h2', {}, 'Daf Yomi & more'),
+    el('p', { class: 'lede' }, `Today’s pages from Sefaria and the calendar for ${state.label || 'this location'}${israel ? ' (Israel schedule)' : ' (Diaspora schedule)'}. Candle-lighting times use sunset here, 18 minutes before.`),
     (() => {
-      const panels = [['dates', 'Hebrew date & candles', el('div', {}, tiles)], ['weeks', 'Next two weeks', upcoming.length ? el('div', { class: 'chartwrap' }, el('table', { class: 'data narrow' }, el('tbody', {}, upRows))) : el('p', { class: 'empty' }, 'Nothing in the next two weeks.')]];
-      let cur = localStorage.getItem('wx.learnTab') || 'dates'; if (!panels.some(x => x[0] === cur)) cur = 'dates';
-      const nav = el('nav', { class: 'tabs sub', role: 'tablist', 'aria-label': 'Calendar views', style: 'margin-top:14px' });
+      const panels = [['daf', 'Daf Yomi', cal.length ? learn : el('p', { class: 'empty' }, 'Sefaria’s calendar is not reachable right now.')], ['dates', 'Hebrew date & candles', el('div', {}, tiles)], ['weeks', 'Next two weeks', upcoming.length ? el('div', { class: 'chartwrap' }, el('table', { class: 'data narrow' }, el('tbody', {}, upRows))) : el('p', { class: 'empty' }, 'Nothing in the next two weeks.')]];
+      let cur = localStorage.getItem('wx.learnTab') || 'daf'; if (!panels.some(x => x[0] === cur)) cur = 'daf';
+      const nav = el('nav', { class: 'tabs sub', role: 'tablist', 'aria-label': 'Calendar views' });
       const show = k => { cur = k; localStorage.setItem('wx.learnTab', k); panels.forEach(([pk, , pe]) => { pe.hidden = pk !== k; }); [...nav.children].forEach((b, i) => b.setAttribute('aria-selected', panels[i][0] === k)); };
       panels.forEach(([k, name]) => nav.append(el('button', { role: 'tab', 'aria-selected': k === cur, onclick: () => show(k) }, name)));
       panels.forEach(([k, , pe]) => { pe.hidden = k !== cur; });
@@ -1658,6 +1663,7 @@ setInterval(() => { if (state.lat != null && !state.loading && document.visibili
 
 // ---------- boot ----------
 loadApod();
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 (function boot() {
   const qs = new URLSearchParams(location.search);
   if (qs.get('lat') && qs.get('lon')) return load(+qs.get('lat'), +qs.get('lon'), qs.get('name'));

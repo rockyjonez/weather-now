@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="35%" r="75%"><stop offset="0" stop-color="#1d4f9c"/><stop offset=".55" stop-color="#0b1c3a"/><stop offset="1" stop-color="#050b1a"/></radialGradient>
+    <linearGradient id="box" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a6ac2"/><stop offset="1" stop-color="#0d3d78"/></linearGradient>
+    <radialGradient id="lamp" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#ffe9a8"/><stop offset=".5" stop-color="#f5b83d"/><stop offset="1" stop-color="#f5b83d" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect width="512" height="512"  fill="url(#bg)"/>
+  <g fill="none" stroke="#5a8cff" stroke-opacity=".14" stroke-width="3">
+    <circle cx="256" cy="230" r="150"/><circle cx="256" cy="230" r="200"/><circle cx="256" cy="230" r="250"/>
+  </g>
+  <!-- sun / cloud behind the box -->
+  <circle cx="352" cy="150" r="46" fill="#f5b83d" opacity=".95"/>
+  <g fill="#e9f3ff" opacity=".95"><circle cx="150" cy="200" r="34"/><circle cx="188" cy="182" r="44"/><circle cx="228" cy="204" r="34"/><rect x="118" y="200" width="142" height="38" rx="19"/></g>
+  <!-- police box -->
+  <circle cx="256" cy="150" r="30" fill="url(#lamp)"/>
+  <circle cx="256" cy="150" r="10" fill="#ffe9a8"/>
+  <rect x="222" y="164" width="68" height="12" rx="3" fill="#0d2f57"/>
+  <rect x="206" y="176" width="100" height="22" rx="4" fill="#0a2549"/>
+  <rect x="214" y="198" width="84" height="212" rx="6" fill="url(#box)" stroke="#9cc3ff" stroke-opacity=".25" stroke-width="2"/>
+  <g fill="#e9f3ff" opacity=".92"><rect x="224" y="210" width="28" height="30" rx="3"/><rect x="260" y="210" width="28" height="30" rx="3"/></g>
+  <g fill="#0d3d78"><rect x="237" y="210" width="2" height="30"/><rect x="273" y="210" width="2" height="30"/><rect x="224" y="224" width="28" height="2"/><rect x="260" y="224" width="28" height="2"/></g>
+  <g fill="#0a2f5e"><rect x="224" y="252" width="28" height="44" rx="3"/><rect x="260" y="252" width="28" height="44" rx="3"/><rect x="224" y="306" width="28" height="44" rx="3"/><rect x="260" y="306" width="28" height="44" rx="3"/><rect x="224" y="360" width="28" height="40" rx="3"/><rect x="260" y="360" width="28" height="40" rx="3"/></g>
+  <!-- ground / rain hint -->
+  <g stroke="#4d9cf0" stroke-width="6" stroke-linecap="round" opacity=".9"><line x1="132" y1="270" x2="122" y2="296"/><line x1="166" y1="270" x2="156" y2="296"/><line x1="200" y1="270" x2="190" y2="296"/></g>
+</svg>

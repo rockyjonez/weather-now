@@ -100,6 +100,17 @@ What it does, cell by cell:
 Orbital propagation uses satellite.js loaded with Grove's `require`; every
 other computation is the same code as `index.html`.
 
+## On a phone
+
+The site is an installable web app (`manifest.webmanifest`, `sw.js`, icons in
+`icons/`). On Android Chrome open https://weather-now.exe.xyz, choose
+*Add to Home screen* / *Install app*, and a 1×1 TARDIS icon opens the console
+full-screen. `widget.html` is a live 1:1 tile (temperature, condition, high/low,
+rain chance or NWS alert count, today's Daf Yomi) that scales to any square;
+point an Android web-widget app (for example a KWGT web tile) at
+https://weather-now.exe.xyz/widget.html for a true home-screen widget. It
+reads the same saved location as the main page and accepts `?lat=&lon=&name=`.
+
 ## Styling
 
 The look is a Doctor Who fan tribute: TARDIS-blue console panels, amber

@@ -7,7 +7,9 @@ ROOT="/var/www/weather-now"
 cd "$(dirname "$0")"
 
 ssh "$HOST" "sudo mkdir -p $ROOT && sudo chown \$USER $ROOT"
-scp -q index.html "$HOST:$ROOT/index.html"
+scp -q index.html widget.html manifest.webmanifest sw.js "$HOST:$ROOT/"
+ssh "$HOST" "mkdir -p $ROOT/icons"
+scp -q icons/*.png icons/icon.svg "$HOST:$ROOT/icons/"
 ssh "$HOST" "mkdir -p $ROOT/grove"
 scp -q grove/*.md "$HOST:$ROOT/grove/"
 
@@ -18,6 +20,8 @@ server {
     root /var/www/weather-now;
     index index.html;
     add_header Cache-Control "no-cache";
+    types { application/manifest+json webmanifest; }
+    location = /sw.js { add_header Cache-Control "no-cache"; add_header Service-Worker-Allowed "/"; }
     add_header X-Content-Type-Options nosniff;
     location / { try_files \$uri \$uri/ /index.html; }
 }

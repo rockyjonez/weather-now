@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Weather Now widget</title>
+<meta name="theme-color" content="#0b1c3a">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Audiowide&family=Exo+2:wght@400;600;700&display=swap">
+<style>
+/* A 1:1 tile. It fills whatever square it is given (home-screen web widget, KWGT web tile, or a browser window). */
+:root{--bg:#050b1a;--surface:#0b1c3a;--line:#22437c;--text:#eaf2ff;--text2:#b9c9e6;--muted:#7f95bf;--amber:#f5b83d;--amber2:#ffd27a;--blue:#4d9cf0;--red:#ef6f6f}
+*{box-sizing:border-box}html,body{margin:0;height:100%;background:var(--bg)}
+body{font:14px/1.3 "Exo 2",system-ui,sans-serif;color:var(--text);display:flex;align-items:center;justify-content:center;overflow:hidden}
+a.tile{position:relative;display:block;width:min(100vw,100vh);height:min(100vw,100vh);aspect-ratio:1/1;color:inherit;text-decoration:none;background:radial-gradient(ellipse 90% 60% at 50% -10%,#123a7a 0%,transparent 60%),radial-gradient(circle at 85% 105%,#2a1a66 0%,transparent 45%),var(--surface);border:1px solid var(--line);border-radius:14%;overflow:hidden;container-type:size}
+.tile::before{content:"";position:absolute;inset:-30%;background:repeating-radial-gradient(circle at 50% 40%,transparent 0 9%,rgba(90,140,255,.07) 9% 9.5%);pointer-events:none}
+.in{position:absolute;inset:0;padding:7% 8% 6%;display:flex;flex-direction:column;justify-content:space-between}
+.top{display:flex;justify-content:space-between;align-items:flex-start;gap:4%}
+.loc{font-size:7cqw;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:70%}
+.lamp{width:6cqw;height:6cqw;border-radius:50%;background:var(--amber2);box-shadow:0 0 3cqw 1cqw rgba(245,184,61,.6);animation:lamp 2.4s ease-in-out infinite;flex:none;margin-top:1cqw}
+@keyframes lamp{0%,100%{opacity:.5}50%{opacity:1}}
+.mid{display:flex;align-items:center;gap:5%}
+.emo{font-size:26cqw;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.5))}
+.t{font-family:"Audiowide","Exo 2",sans-serif;font-size:30cqw;line-height:1;color:var(--amber2);text-shadow:0 0 14px rgba(245,184,61,.45)}
+.cond{font-size:8cqw;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row{display:flex;justify-content:space-between;gap:3%;font-size:7.2cqw;color:var(--text2)}
+.row b{color:var(--text);font-weight:600}
+.hl{color:var(--blue)}
+.daf{margin-top:2cqw;padding-top:2cqw;border-top:1px solid var(--line);font-size:6.8cqw;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.daf b{color:var(--amber2);font-weight:600}
+.warn{color:var(--red)}
+.err{font-size:7cqw;color:var(--muted)}
+</style>
+</head>
+<body>
+<a class="tile" id="tile" href="index.html" target="_top" aria-label="Open Weather Now">
+  <div class="in">
+    <div class="top"><div class="loc" id="loc">Materialising…</div><div class="lamp" aria-hidden="true"></div></div>
+    <div class="mid"><div class="emo" id="emo">☁️</div><div><div class="t" id="temp">–</div></div></div>
+    <div>
+      <div class="cond" id="cond"></div>
+      <div class="row"><span>H <b id="hi">–</b> · L <b id="lo">–</b></span><span class="hl" id="pop"></span></div>
+      <div class="daf" id="daf"></div>
+    </div>
+  </div>
+</a>
+<script>
+'use strict';
+const qs = new URLSearchParams(location.search);
+let saved = null; try { saved = JSON.parse(localStorage.getItem('wx.loc2') || 'null'); } catch (e) { }
+const lat = +(qs.get('lat') || (saved && saved.lat) || 40.7141), lon = +(qs.get('lon') || (saved && saved.lon) || -74.0744);
+const label = qs.get('name') || (saved && saved.label) || 'Jersey City';
+const units = qs.get('units') || localStorage.getItem('wx.units') || 'us';
+const F = c => c == null ? '–' : `${Math.round(units === 'us' ? c * 9 / 5 + 32 : c)}°`;
+document.getElementById('tile').href = `index.html?lat=${lat}&lon=${lon}&name=${encodeURIComponent(label)}#overview`;
+const WMO = { 0: ['Clear', '☀️', '🌙'], 1: ['Mainly clear', '🌤️', '🌙'], 2: ['Partly cloudy', '⛅', '☁️'], 3: ['Overcast', '☁️', '☁️'], 45: ['Fog', '🌫️'], 48: ['Freezing fog', '🌫️'], 51: ['Light drizzle', '🌦️'], 53: ['Drizzle', '🌦️'], 55: ['Heavy drizzle', '🌧️'], 56: ['Freezing drizzle', '🌧️'], 57: ['Freezing drizzle', '🌧️'], 61: ['Light rain', '🌧️'], 63: ['Rain', '🌧️'], 65: ['Heavy rain', '🌧️'], 66: ['Freezing rain', '🌧️'], 67: ['Freezing rain', '🌧️'], 71: ['Light snow', '🌨️'], 73: ['Snow', '🌨️'], 75: ['Heavy snow', '❄️'], 77: ['Snow grains', '🌨️'], 80: ['Showers', '🌦️'], 81: ['Showers', '🌦️'], 82: ['Heavy showers', '🌧️'], 85: ['Snow showers', '🌨️'], 86: ['Snow showers', '🌨️'], 95: ['Thunderstorms', '⛈️'], 96: ['Thunderstorms, hail', '⛈️'], 99: ['Thunderstorms, hail', '⛈️'] };
+async function load() {
+  const $ = id => document.getElementById(id);
+  $('loc').textContent = label;
+  try {
+    const om = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}&current=temperature_2m,apparent_temperature,is_day,weather_code&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&forecast_days=1&timezone=auto`).then(r => r.json());
+    const c = om.current, w = WMO[c.weather_code] || ['–', '🌡️'];
+    $('temp').textContent = F(c.temperature_2m);
+    $('emo').textContent = c.is_day === 0 && w[2] ? w[2] : w[1];
+    $('cond').textContent = `${w[0]} · feels ${F(c.apparent_temperature)}`;
+    $('hi').textContent = F(om.daily.temperature_2m_max[0]); $('lo').textContent = F(om.daily.temperature_2m_min[0]);
+    const pop = om.daily.precipitation_probability_max[0]; $('pop').textContent = pop > 0 ? `💧 ${pop}%` : '';
+  } catch (e) { $('cond').innerHTML = '<span class="err">Weather unavailable</span>'; }
+  try {
+    // NWS alert count where the NWS covers; quietly skipped elsewhere
+    const a = await fetch(`https://api.weather.gov/alerts/active?point=${lat.toFixed(4)},${lon.toFixed(4)}`, { headers: { Accept: 'application/geo+json' } }).then(r => r.ok ? r.json() : null);
+    if (a && a.features && a.features.length) $('pop').innerHTML = `<span class="warn">⚠ ${a.features.length} alert${a.features.length > 1 ? 's' : ''}</span>`;
+  } catch (e) { }
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const sef = await fetch(`https://www.sefaria.org/api/calendars?diaspora=1&timezone=${encodeURIComponent(tz)}`).then(r => r.json());
+    const daf = (sef.calendar_items || []).find(x => x.title.en === 'Daf Yomi');
+    if (daf) $('daf').innerHTML = `Daf Yomi <b>${daf.displayValue.en}</b> <span dir="rtl" lang="he">${daf.displayValue.he || ''}</span>`;
+  } catch (e) { }
+}
+load(); setInterval(load, 15 * 60e3);
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => { });
+</script>
+</body>
+</html>
