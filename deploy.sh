@@ -21,6 +21,7 @@ server {
     index index.html;
     add_header Cache-Control "no-cache";
     location = /sw.js { add_header Cache-Control "no-cache"; add_header Service-Worker-Allowed "/"; }
+    location = /manifest.webmanifest { default_type application/manifest+json; add_header Cache-Control "no-cache"; }
     add_header X-Content-Type-Options nosniff;
     location / { try_files \$uri \$uri/ /index.html; }
 }
