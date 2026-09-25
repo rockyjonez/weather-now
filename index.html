@@ -180,6 +180,7 @@ table.data tr.night td{background:var(--night)}
 .pips.good[data-v="4"] i.on,.pips.good[data-v="5"] i.on{background:var(--s-aqua);border-color:var(--s-aqua)}
 .pips.good[data-v="1"] i.on,.pips.good[data-v="2"] i.on{background:var(--s-red);border-color:var(--s-red)}
 .tiles.health{grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:7px}
+@media(max-width:640px){.tiles.health{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.tiles.health .tile{padding:6px 8px}.tiles.health .v{font-size:14px!important}.tiles.health .s{font-size:10px}.tiles.health .k{font-size:9px;letter-spacing:.05em}}
 .tiles.health .tile{padding:7px 9px}
 .tiles.health .k{font-size:10px;letter-spacing:.08em}
 .tiles.health .v{font-size:15px!important;margin-top:1px;display:flex;align-items:center;gap:5px;flex-wrap:wrap}
@@ -274,7 +275,7 @@ footer{margin-top:28px;font-size:13px;color:var(--muted);line-height:1.6}
 <script>
 'use strict';
 const API = 'https://api.weather.gov';
-const BUILD = '2026-09-23.3';
+const BUILD = '2026-09-25.1';
 const HOUR = 3600e3;
 const $ = s => document.querySelector(s);
 function el(tag, attrs = {}, ...kids) {
@@ -1483,7 +1484,9 @@ const MAP_LAYERS_INTL = [
   { key: 'ecradar', name: 'Radar, Environment Canada', src: 'geomet', layer: 'RADAR_1KM_RRAI', kind: 'obs', loop: 120, about: 'Environment Canada 1 km rain-rate radar mosaic, 6-minute frames.', only: 'Canada' },
   { key: 'ecsnow', name: 'Snow radar, Environment Canada', src: 'geomet', layer: 'RADAR_1KM_RSNO', kind: 'obs', loop: 120, about: 'Environment Canada 1 km snow-rate radar mosaic.', only: 'Canada' },
   { key: 'lightning', name: 'Lightning', ws: 'lightning_detection', layer: 'lightning_detection:ldn_lightning_strike_density', kind: 'obs', loop: 120, about: 'Lightning strike density in 15-minute bins (Vaisala network via NOAA nowCOAST). The loop covers the last two hours.' },
-  { key: 'satellite', name: 'Clouds (satellite)', ws: 'satellite', layer: 'satellite:global_longwave_imagery_mosaic', kind: 'obs', loop: 60, about: 'Global infrared satellite mosaic: brighter means colder, higher cloud tops. Works at night.' }
+  { key: 'satellite', name: 'Clouds (satellite)', ws: 'satellite', layer: 'satellite:global_longwave_imagery_mosaic', kind: 'obs', loop: 60, about: 'Global infrared satellite mosaic: brighter means colder, higher cloud tops. Works at night.' },
+  { key: 'pm25', unit: 'µg/m³', name: 'Fine particles (PM2.5)', src: 'arcgis', svc: 'air_quality/ndgd_apm25_hr01', server: 'ImageServer', kind: 'fc', about: 'NOAA air-quality forecast for fine particles. Covers North America; blank elsewhere.' },
+  { key: 'smoke', unit: 'µg/m³', name: 'Wildfire smoke', src: 'arcgis', svc: 'air_quality/ndgd_smoke_sfc_1hr_avg_time', server: 'ImageServer', kind: 'fc', about: 'NOAA surface smoke forecast. Covers North America; blank elsewhere.' }
 ];
 const activeMapLayers = () => state.data && state.data.intl ? MAP_LAYERS_INTL.filter(l => !l.only || l.only === state.data.intl.name) : MAP_LAYERS;
 
@@ -1540,20 +1543,21 @@ async function loadDailyLearning(d) {
 
 // ---------- map view (NOAA nowCOAST WMS + Leaflet) ----------
 const NOWCOAST = 'https://nowcoast.noaa.gov/geoserver';
+const NWSGIS = 'https://mapservices.weather.noaa.gov/raster/rest/services';
 const MAP_LAYERS = [
   { key: 'radar', unit: 'dBZ', name: 'Radar', ws: 'weather_radar', layer: 'weather_radar:{radar}_base_reflectivity_mosaic', kind: 'obs', loop: 60, about: 'Base reflectivity mosaic, updated every few minutes. The loop covers the last hour.' },
+  { key: 'rvradar', unit: 'dBZ', name: 'Radar + nowcast', src: 'rv', kind: 'obs', loop: 120, about: 'RainViewer global radar composite with short-range nowcast frames, so the loop runs past the present moment.' },
   { key: 'lightning', unit: 'strikes', name: 'Lightning', ws: 'lightning_detection', layer: 'lightning_detection:ldn_lightning_strike_density', kind: 'obs', loop: 120, about: 'Lightning strike density in 15-minute bins from the national detection network. The loop covers the last two hours.' },
-  { key: 'satellite', unit: '', name: 'Clouds (satellite)', ws: 'satellite', layer: 'satellite:goes_longwave_imagery', kind: 'obs', loop: 60, about: 'GOES infrared imagery: brighter means colder, higher cloud tops. Works at night.' },
-  { key: 'temp', unit: '°F', name: 'Temperature', ws: 'ndfd_temperature', layer: 'ndfd_temperature:{r}_air_temperature', kind: 'fc', about: 'NWS forecast air temperature (°F), hourly for the next 12 hours.' },
-  { key: 'feels', unit: '°F', name: 'Feels like', ws: 'ndfd_temperature', layer: 'ndfd_temperature:{r}_apparent_temperature', kind: 'fc', about: 'NWS forecast apparent temperature (°F), hourly for the next 12 hours.' },
-  { key: 'pop', unit: '%', name: 'Rain chance', ws: 'ndfd_precipitation', layer: 'ndfd_precipitation:{r}_12hr_precipitation_probability', kind: 'fc', horizon: 30, about: '12-hour probability of precipitation (%). Each frame is a 12-hour period.' },
-  { key: 'qpf', unit: 'in', name: 'Rain amount', ws: 'ndfd_precipitation', layer: 'ndfd_precipitation:{r}_6hr_precipitation_amount', kind: 'fc', horizon: 24, about: '6-hour liquid precipitation amount (in). Each frame is a 6-hour period.' },
-  { key: 'snow', unit: 'in', name: 'Snow', ws: 'ndfd_precipitation', layer: 'ndfd_precipitation:{r}_6hr_snow_amount', kind: 'fc', horizon: 24, about: '6-hour snowfall amount (in). Each frame is a 6-hour period.' },
-  { key: 'sky', unit: '%', name: 'Cloud cover', ws: 'ndfd_sky', layer: 'ndfd_sky:{r}_total_sky_cover', kind: 'fc', about: 'NWS forecast total sky cover (%), hourly for the next 12 hours.' },
-  { key: 'wind', unit: 'kn', name: 'Wind speed', ws: 'ndfd_wind', layer: 'ndfd_wind:{r}_wind_speed', kind: 'fc', about: 'NWS forecast sustained wind in knots (1 kn = 1.15 mph).' },
-  { key: 'gust', unit: 'kn', name: 'Wind gusts', ws: 'ndfd_wind', layer: 'ndfd_wind:{r}_wind_gust', kind: 'fc', about: 'NWS forecast wind gusts in knots (1 kn = 1.15 mph).' },
-  { key: 'barbs', unit: 'kn', name: 'Wind direction', ws: 'ndfd_wind', layer: 'ndfd_wind:{r}_wind_velocity', kind: 'fc', about: 'Wind barbs: the barb points into the wind; each full barb is 10 knots.' },
-  { key: 'rh', unit: '%', name: 'Humidity', ws: 'ndfd_moisture', layer: 'ndfd_moisture:{r}_relative_humidity', kind: 'fc', about: 'NWS forecast relative humidity (%). Low humidity with wind is the fire-weather signal.' },
+  { key: 'satellite', unit: '', name: 'Clouds (infrared)', ws: 'satellite', layer: 'satellite:goes_longwave_imagery', kind: 'obs', loop: 60, about: 'GOES infrared imagery: brighter means colder, higher cloud tops. Works at night.' },
+  { key: 'satvis', unit: '', name: 'Clouds (visible)', ws: 'satellite', layer: 'satellite:goes_visible_imagery', kind: 'obs', loop: 60, about: 'GOES visible imagery: what the satellite sees in daylight. Dark after sunset.' },
+  { key: 'satwv', unit: '', name: 'Water vapour', ws: 'satellite', layer: 'satellite:goes_water_vapor_imagery', kind: 'obs', loop: 60, about: 'Moisture in the middle of the atmosphere, which traces jet streams and dry slots.' },
+  { key: 'satsnow', unit: '', name: 'Snow & ice from space', ws: 'satellite', layer: 'satellite:goes_snow_ice_imagery', kind: 'obs', loop: 60, about: 'GOES channel that separates snow and ice on the ground from cloud.' },
+  { key: 'pm25', unit: 'µg/m³', name: 'Fine particles (PM2.5)', src: 'arcgis', svc: 'air_quality/ndgd_apm25_hr01', server: 'ImageServer', kind: 'fc', about: 'NOAA air-quality forecast for hourly average fine particles, the pollution that matters most for asthma and allergies. Frames run three days ahead.' },
+  { key: 'ozone', unit: 'ppb', name: 'Ozone', src: 'arcgis', svc: 'air_quality/ndgd_ozone_1hr_avg_time', server: 'ImageServer', kind: 'fc', about: 'NOAA one-hour average ozone forecast. High ozone on hot, still afternoons irritates airways.' },
+  { key: 'smoke', unit: 'µg/m³', name: 'Wildfire smoke', src: 'arcgis', svc: 'air_quality/ndgd_smoke_sfc_1hr_avg_time', server: 'ImageServer', kind: 'fc', about: 'NOAA surface smoke forecast. Blank means no modelled smoke, which is the usual case away from fire season.' },
+  { key: 'dust', unit: 'µg/m³', name: 'Dust', src: 'arcgis', svc: 'air_quality/ndgd_dust_sfc_time', server: 'ImageServer', kind: 'fc', about: 'NOAA surface dust forecast. Mostly blank outside the desert Southwest.' },
+  { key: 'snowdepth', unit: 'in', name: 'Snow on the ground', src: 'arcgis', svc: 'snow/NOHRSC_Snow_Analysis', server: 'MapServer', arcLayers: '0', kind: 'static', about: 'National snow analysis: how deep the snow is right now. Blank when there is none.' },
+  { key: 'ffg', unit: 'in', name: 'Flash flood guidance', src: 'arcgis', svc: 'precip/rfc_gridded_ffg', server: 'MapServer', arcLayers: '3', kind: 'static', about: 'How much rain in a short time would start flash flooding here. Low values mean saturated ground.' },
   { key: 'alerts', name: 'Alerts', ws: 'alerts', layer: 'alerts:watches_warnings_advisories', kind: 'static', about: 'Current NWS watches, warnings and advisories. Click a shaded area for its name.' }
 ];
 const ALERTS_LAYER = 'alerts:watches_warnings_advisories';
@@ -1568,7 +1572,26 @@ function ensureLeaflet() {
   });
   return leafletP;
 }
+function arcgisTileLayer(def, opts) {
+  const base = `${NWSGIS}/${def.svc}/${def.server}/${def.server === 'ImageServer' ? 'exportImage' : 'export'}`;
+  const Cls = L.TileLayer.extend({ getTileUrl(c) {
+    const nw = this._map.unproject([c.x * 256, c.y * 256], c.z), se = this._map.unproject([(c.x + 1) * 256, (c.y + 1) * 256], c.z);
+    const a = L.CRS.EPSG3857.project(nw), b = L.CRS.EPSG3857.project(se);
+    const q = new URLSearchParams({ bbox: `${a.x},${b.y},${b.x},${a.y}`, bboxSR: '3857', imageSR: '3857', size: '256,256', format: 'png32', transparent: 'true', f: 'image' });
+    if (def.server === 'MapServer') q.set('layers', 'show:' + (def.arcLayers || '0'));
+    if (this.options.wxTime) q.set('time', String(this.options.wxTime));
+    return `${base}?${q}`;
+  } });
+  return new Cls('', { ...opts, maxNativeZoom: 12, crossOrigin: true });
+}
 async function layerTimes(def, name) {
+  if (def.src === 'arcgis') {
+    const j = await fetch(`${NWSGIS}/${def.svc}/${def.server}?f=json`).then(r => r.json()).catch(() => null);
+    const te = j && j.timeInfo && j.timeInfo.timeExtent;
+    if (!te || !te[0]) return [];
+    const step = HOUR, out = []; for (let t = te[0]; t <= te[1] && out.length < 80; t += step) out.push(t);
+    return out;
+  }
   if (def.src === 'rv') {
     const j = await fetch('https://api.rainviewer.com/public/weather-maps.json').then(r => r.json()).catch(() => null);
     if (!j || !j.radar) return [];
@@ -1602,9 +1625,11 @@ function pickFrames(def, times) {
     if (f.length > 10) { const last = f[f.length - 1], step = f.length / 10; f = Array.from({ length: 10 }, (_, i) => f[Math.floor(i * step)]); f[f.length - 1] = last; }
     return f;
   }
-  const horizon = (def.horizon || 12) * HOUR;
-  const f = times.filter(t => t >= now - HOUR && t <= now + horizon);
-  return f.length ? f : times.slice(0, 3);
+  const horizon = (def.horizon || 24) * HOUR;
+  let f = times.filter(t => t >= now - HOUR && t <= now + horizon);
+  if (!f.length) f = times.slice(0, 12);
+  if (f.length > 24) { const step = f.length / 24; f = Array.from({ length: 24 }, (_, i) => f[Math.floor(i * step)]); }
+  return f;
 }
 function viewMap(d) {
   const LIST = activeMapLayers();
@@ -1640,11 +1665,12 @@ function buildMap(d, def, ui) {
   const wmsUrl = def.src === 'geomet' ? GEOMET : `${NOWCOAST}/${def.ws}/wms`;
   map.createPane('wx'); map.getPane('wx').style.zIndex = 350;
   map.createPane('al'); map.getPane('al').style.zIndex = 360;
-  const wmsBase = { format: 'image/png', transparent: true, version: '1.3.0', attribution: def.src === 'geomet' ? 'Environment Canada GeoMet' : def.src === 'rv' ? 'RainViewer' : 'NOAA nowCOAST', pane: 'wx' };
+  const wmsBase = { format: 'image/png', transparent: true, version: '1.3.0', attribution: def.src === 'geomet' ? 'Environment Canada GeoMet' : def.src === 'rv' ? 'RainViewer' : def.src === 'arcgis' ? 'NOAA/NWS' : 'NOAA nowCOAST', pane: 'wx' };
   if (!d.intl && mapState.showAlerts && def.key !== 'alerts') L.tileLayer.wms(`${NOWCOAST}/alerts/wms`, { ...wmsBase, pane: 'al', layers: ALERTS_LAYER, opacity: 0.55 }).addTo(map);
   L.circleMarker([state.lat, state.lon], { radius: 7, color: '#fff', weight: 2, fillColor: '#2a78d6', fillOpacity: 1 }).addTo(map).bindTooltip(state.label || 'Selected point');
   ui.legend.innerHTML = '';
-  if (def.src === 'rv') ui.legend.append(el('p', { class: 'note' }, 'Colour runs from light blue (drizzle) through green and yellow to red and purple (heavy rain or hail); snow shows in blue-grey.'));
+  if (def.src === 'arcgis') ui.legend.append(el('img', { src: `${NWSGIS}/${def.svc}/${def.server}/legend?f=image`, alt: `${def.name} legend`, onerror: e => e.target.remove() }));
+  else if (def.src === 'rv') ui.legend.append(el('p', { class: 'note' }, 'Colour runs from light blue (drizzle) through green and yellow to red and purple (heavy rain or hail); snow shows in blue-grey.'));
   else if (def.src === 'geomet') ui.legend.append(el('img', { src: `${GEOMET}?service=WMS&version=1.3.0&request=GetLegendGraphic&layer=${name}&format=image/png&sld_version=1.1.0`, alt: `${def.name} legend` }));
   else if (def.key !== 'alerts') ui.legend.append(el('img', { src: `${NOWCOAST}/${def.ws}/wms?service=WMS&version=1.3.0&request=GetLegendGraphic&layer=${encodeURIComponent(name)}&format=image/png&legend_options=fontName:Helvetica;fontSize:11;dpi:96;forceLabels:on`, alt: `${def.name} legend` }));
   if (!d.intl && (mapState.showAlerts || def.key === 'alerts')) ui.legend.append(el('details', { class: 'legend-details' }, el('summary', {}, 'Alert colours'), el('img', { src: `${NOWCOAST}/alerts/wms?service=WMS&version=1.3.0&request=GetLegendGraphic&layer=${ALERTS_LAYER}&format=image/png&legend_options=fontName:Helvetica;fontSize:10;dpi:96;forceLabels:on`, alt: 'Alerts legend' })));
@@ -1653,7 +1679,8 @@ function buildMap(d, def, ui) {
   const ensureFrame = i => {
     const t = frames[i], key = frameKey(t);
     if (!mapState.frameLayers[key]) {
-      if (def.src === 'rv' && mapState.rv && mapState.rv.paths[t]) mapState.frameLayers[key] = L.tileLayer(`${mapState.rv.host}${mapState.rv.paths[t]}/256/{z}/{x}/{y}/2/1_1.png`, { opacity: 0, pane: 'wx', attribution: 'RainViewer', maxNativeZoom: 7 }).addTo(map);
+      if (def.src === 'arcgis') mapState.frameLayers[key] = arcgisTileLayer(def, { opacity: 0, pane: 'wx', attribution: 'NOAA/NWS', wxTime: t }).addTo(map);
+      else if (def.src === 'rv' && mapState.rv && mapState.rv.paths[t]) mapState.frameLayers[key] = L.tileLayer(`${mapState.rv.host}${mapState.rv.paths[t]}/256/{z}/{x}/{y}/2/1_1.png`, { opacity: 0, pane: 'wx', attribution: 'RainViewer', maxNativeZoom: 7 }).addTo(map);
       else { const opts = { ...wmsBase, layers: name, opacity: 0 }; if (t != null) opts.time = new Date(t).toISOString(); mapState.frameLayers[key] = L.tileLayer.wms(wmsUrl, opts).addTo(map); }
     }
     return key;

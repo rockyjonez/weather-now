@@ -13,7 +13,7 @@ Live: https://weather-now.exe.xyz
 | View | Data |
 |---|---|
 | Overview | Hourly strip with NWS icons, temperature and rain charts, tonight's sky summary and the sky sub-tabs |
-| Map | Leaflet map with NOAA nowCOAST layers: radar loop, lightning density, GOES infrared clouds, forecast temperature, feels-like, rain chance, rain amount, snow, cloud cover, wind speed, gusts, wind barbs, humidity, and NWS alert polygons; time slider and play button; click for the value at a point or to load that point's forecast |
+| Map | Leaflet map: NOAA nowCOAST radar loop, lightning density and four GOES channels (infrared, visible, water vapour, snow/ice); RainViewer global radar with nowcast frames; NOAA air-quality forecasts for fine particles, ozone, wildfire smoke and dust; national snow depth; flash flood guidance; NWS alert polygons. Time slider and play button; click for the value at a point or to load that point's forecast |
 | 10-day | Day cards with NWS text, icons, highs and lows for seven days and Open-Meteo model guidance for days 8 to 10; highs/lows, precipitation and wind charts across all ten days |
 | Health & comfort | Xweather-style 1–5 indices for migraine, arthritis, sinus, allergy (pollen), asthma & air quality, cold & flu, UV and outdoor discomfort, all on the same higher-is-worse scale, with the reasons behind each score; current pressure trend, AQI, humidity, UV; a 96-hour barometric pressure chart; a 7-day outlook table |
 | Overview (sky block) | Live map of the ISS, Tiangong, Hubble, NOAA-20, Terra, Landsat 9 and GOES-19, plus the whole Starlink constellation (count overhead, optional 10,000-dot map layer, next visible pass of the newest launch train) from CelesTrak orbital elements (satellite.js SGP4), with ground track, horizon footprint and day/night terminator; naked-eye pass predictions over the location for 10 days; tonight's sky and a 10-day calendar of sun/moon times, moon phase, visible planets, moon phases, equinoxes, meteor-shower peaks, eclipses and conjunctions |
@@ -142,6 +142,14 @@ Then open `http://localhost:8765/?lat=37.7749&lon=-122.4194`.
 the VM's proxy port. See the script for the one-time nginx setup.
 
 ## Data notes
+
+- NOAA retired every NDFD forecast workspace from nowCOAST (temperature,
+  feels-like, rain chance and amount, snow, sky cover, wind, humidity); those
+  layers began returning 404 and were replaced on 2026-09-25 with sources that
+  are live: extra GOES channels, RainViewer radar with nowcast, and the NOAA
+  air-quality ImageServers, which carry genuine three-day forecast frames. The
+  same forecast numbers still appear as charts in the 10-day and Health tabs.
+  NOAA's NDFD ArcGIS service was checked too and is stale (August 2025).
 
 - Daily learning comes from the Sefaria calendars API (Diaspora or Israel
   schedule by location); Hebrew date, parasha, candle lighting, havdalah and
