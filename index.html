@@ -172,6 +172,26 @@ table.data tr.night td{background:var(--night)}
 .day details{font-size:13px;margin-top:4px}.day summary{cursor:pointer;color:var(--accent)}.day details p{margin:6px 0 0;color:var(--text2)}
 .day .src{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.14em;margin-top:auto;padding-top:6px}
 .skymap{height:440px}
+.launch-hero{display:grid;grid-template-columns:minmax(0,260px) minmax(0,1fr);gap:14px;align-items:start}
+@media(max-width:640px){.launch-hero{grid-template-columns:1fr}}
+.launch-hero img{width:100%;border-radius:10px;border:1px solid var(--line);display:block}
+.lh-body .k{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.14em;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.lh-body .k .live{color:var(--s-red);letter-spacing:.06em}
+.lh-name{font-family:"Audiowide","Exo 2",sans-serif;font-size:19px;color:var(--amber2);margin-top:3px;line-height:1.25}
+[data-theme="light"] .lh-name{color:var(--tardis)}
+.lh-sub{font-size:13px;color:var(--text2);margin-top:2px}
+.lh-count{font-family:"Audiowide","Exo 2",sans-serif;font-size:30px;letter-spacing:.02em;margin:10px 0 2px;color:var(--text)}
+.lh-count.soon{color:var(--s-red)}
+.lh-when{font-size:14px;color:var(--text2);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.lh-where{font-size:13px;color:var(--muted);margin-top:3px}
+.lh-links{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.lh-links .btn{text-decoration:none;font-size:13px}
+.lstat{font-size:11px;border:1px solid var(--line);border-radius:999px;padding:1px 8px;text-transform:uppercase;letter-spacing:.08em}
+.lstat.go{color:var(--s-aqua);border-color:var(--s-aqua)}
+.lstat.tbc{color:var(--s-yellow);border-color:var(--s-yellow)}
+.lstat.bad{color:var(--s-red);border-color:var(--s-red)}
+td.lcount{font-family:"Audiowide","Exo 2",sans-serif;white-space:nowrap}
+td.lcount.soon{color:var(--s-red)}
 .pips{display:inline-flex;gap:2px;vertical-align:2px;margin-left:4px}
 .pips i{width:9px;height:9px;border-radius:50%;border:1px solid var(--line);background:transparent;display:inline-block}
 .pips i.on{background:var(--s-yellow);border-color:var(--s-yellow)}
@@ -275,7 +295,7 @@ footer{margin-top:28px;font-size:13px;color:var(--muted);line-height:1.6}
 <script>
 'use strict';
 const API = 'https://api.weather.gov';
-const BUILD = '2026-10-01.1';
+const BUILD = '2026-10-01.2';
 const HOUR = 3600e3;
 const $ = s => document.querySelector(s);
 function el(tag, attrs = {}, ...kids) {
@@ -713,8 +733,7 @@ function viewOverview(d) {
       chart({ rows: R, tz, yFmt: v => `${Math.round(v)}%`, yMin: 0, yMax: 100, series: [{ name: 'Rain chance', color: C('blue'), kind: 'bar', values: R.map(r => r.probabilityOfPrecipitation) }], height: 220 }))),
     healthSection(d),
     skySummary(d, cal),
-    ...skyPanels(d, cal),
-    d.rows.some(r => r.weatherText) ? section('Forecast weather by hour', wordsRow(d, r => r.weatherText, 'Weather')) : null
+    ...skyPanels(d, cal)
   ];
 }
 function viewTemp(d) {
@@ -1247,7 +1266,7 @@ function skyPanels(d, cal) {
     renderPasses(); updateNextPass(d);
     SATS.filter(s => s.pass && recs[s.id] && skyState.passes[s.id] == null).forEach(s => computePasses(recs[s.id], lat, lon, from, to, ps => { if (gen !== skyState.gen) return; skyState.passes[s.id] = ps; renderPasses(); updateNextPass(d); tick(true); }));
   }).catch(e => { satTable.innerHTML = ''; satTable.append(el('p', { class: 'err' }, e.message)); passBox.innerHTML = ''; });
-  const subs = [['sats', 'Satellites over Earth', satSec], ['passes', `Passes over ${state.label || 'here'}`, passSec], ['nesdis', 'NESDIS imagery', nesdisSection()], ['moon', 'Moon & Sun', moonSec], ['planets', 'Planets', planetSec], ['events', 'Events', eventSec], ['cal', 'Full calendar', calendar]];
+  const subs = [['launches', 'Launches', launchSection(d)], ['sats', 'Satellites over Earth', satSec], ['passes', `Passes over ${state.label || 'here'}`, passSec], ['nesdis', 'NESDIS imagery', nesdisSection()], ['moon', 'Moon & Sun', moonSec], ['planets', 'Planets', planetSec], ['events', 'Events', eventSec], ['cal', 'Full calendar', calendar]];
   if (!subs.some(x => x[0] === skyState.sub)) skyState.sub = 'sats';
   const subnav = el('nav', { class: 'tabs sub', role: 'tablist', 'aria-label': 'Sky views' });
   const showSub = key => {
@@ -1365,6 +1384,106 @@ function healthSection(d) {
     legend, tiles, facts,
     el('div', { style: 'margin-top:14px' }, tabGroup('wx.healthTab', [['pressure', 'Barometric pressure, past 48 h & next 48 h', el('div', {}, pchart)], ['outlook', '7-day outlook', el('div', {}, outlook)]])),
     el('p', { class: 'note', style: 'margin-top:10px' }, 'Computed in the page from Open-Meteo hourly pressure, humidity, temperature, UV, wind, rain and storm energy, plus the Open-Meteo air-quality feed (US AQI, PM2.5, ozone, dust). ', h.pollenMeasured ? 'Pollen is measured (Copernicus CAMS).' : '* Pollen is an estimate from season and weather; no free US pollen-count feed exists. ', 'These are guides, not medical advice; your own triggers matter more than any index.'));
+}
+
+// ---------- Rocket launches: countdown to the next flights ----------
+// Launch Library 2 (thespacedevs.com/llapi). Unauthenticated callers are rate limited, so the VM
+// caches the feed hourly and the browser only calls the API directly if that cache is unreachable.
+const LL2 = 'https://ll.thespacedevs.com/2.3.0/launches/upcoming/?limit=12&mode=detailed';
+const launchState = { data: null, loaded: 0, timer: null };
+const LAUNCH_STATUS = { Go: ['Go for launch', 'go'], TBC: ['Time to be confirmed', 'tbc'], TBD: ['Date to be decided', 'tbd'], Success: ['Launched', 'done'], Failure: ['Failed', 'bad'], Hold: ['Held', 'tbc'], 'In Flight': ['In flight', 'go'], 'Partial Failure': ['Partial failure', 'bad'] };
+function normalizeLaunch(d) {
+  const g = (...p) => p.reduce((c, k) => (c && typeof c === 'object') ? c[k] : undefined, d);
+  const vids = (d.vid_urls || []).slice().sort((a, b) => (b.priority ? 0 : 1) - (a.priority ? 0 : 1));
+  const watch = vids.find(v => /youtube|nasa|spacex|twitch/i.test(v.url || '')) || vids[0];
+  return {
+    id: d.id, name: d.name, net: d.net, precision: g('net_precision', 'name') || 'Day',
+    statusAbbrev: g('status', 'abbrev'), statusName: g('status', 'name'), statusNote: g('status', 'description'),
+    provider: g('launch_service_provider', 'name'), rocket: g('rocket', 'configuration', 'full_name') || g('rocket', 'configuration', 'name'),
+    mission: g('mission', 'name'), missionType: g('mission', 'type'), orbit: g('mission', 'orbit', 'name'),
+    about: g('mission', 'description'), pad: g('pad', 'name'), place: g('pad', 'location', 'name'),
+    lat: parseFloat(g('pad', 'latitude')), lon: parseFloat(g('pad', 'longitude')),
+    image: g('image', 'image_url'), probability: d.probability, weather: d.weather_concerns,
+    info: (d.info_urls || [])[0] && d.info_urls[0].url, watch: watch && watch.url, watchWho: watch && watch.publisher,
+    live: d.webcast_live, page: d.slug ? `https://nextspaceflight.com/launches/details/${d.id}` : null
+  };
+}
+async function loadLaunches() {
+  if (launchState.data && Date.now() - launchState.loaded < 30 * 60e3) return launchState.data;
+  let rows = null;
+  for (const u of ['launches.json', 'https://weather-now.exe.xyz/launches.json']) {
+    try { const r = await fetch(u, { cache: 'no-cache' }); if (r.ok) { const j = await r.json(); if (Array.isArray(j) && j.length) { rows = j; break; } } } catch (e) { }
+  }
+  if (!rows) { try { const r = await fetch(LL2); if (r.ok) { const j = await r.json(); if (j.results) rows = j.results.map(normalizeLaunch); } } catch (e) { } }
+  if (rows) { launchState.data = rows; launchState.loaded = Date.now(); try { localStorage.setItem('wx.launches', JSON.stringify(rows)); } catch (e) { } return rows; }
+  try { const c = JSON.parse(localStorage.getItem('wx.launches') || 'null'); if (Array.isArray(c) && c.length) return c; } catch (e) { }
+  return null;
+}
+// "T-minus" string. Precision matters: NASA publishes some dates only to the month.
+function countdown(ms) {
+  const past = ms < 0; const s = Math.floor(Math.abs(ms) / 1000);
+  const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60), sec = s % 60;
+  const parts = d ? [`${d}d`, `${h}h`, `${m}m`] : h ? [`${h}h`, `${m}m`, `${sec}s`] : [`${m}m`, `${sec}s`];
+  return (past ? 'T+' : 'T−') + parts.join(' ');
+}
+const vague = p => /month|year|quarter/i.test(p || '');
+function launchWhen(L, tz) {
+  const t = Date.parse(L.net);
+  if (isNaN(t)) return { t: null, text: 'date not set' };
+  if (vague(L.precision)) return { t, text: `${new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric', timeZone: tz }).format(t)} (approximate)` };
+  if (/day/i.test(L.precision)) return { t, text: `${dayMD(new Date(t).toLocaleDateString('en-CA', { timeZone: tz }))}, time to be set` };
+  return { t, text: fmtDT(t, tz) };
+}
+function launchSection(d) {
+  const tz = d.tz;
+  const body = el('div', {}, el('p', { class: 'note' }, 'Loading the launch schedule…'));
+  const draw = rows => {
+    body.innerHTML = '';
+    if (!rows) { body.append(el('p', { class: 'empty' }, 'The launch schedule is not reachable right now. ', el('a', { href: 'https://www.rocketlaunch.live/', target: '_blank', rel: 'noopener' }, 'Open rocketlaunch.live'))); return; }
+    const now = Date.now();
+    const list = rows.map(L => ({ ...L, when: launchWhen(L, tz) })).filter(L => L.when.t == null || L.when.t > now - 2 * HOUR).slice(0, 10);
+    if (!list.length) { body.append(el('p', { class: 'empty' }, 'No upcoming launches listed.')); return; }
+    const next = list[0];
+    const hero = el('div', { class: 'launch-hero' },
+      next.image ? el('img', { src: next.image, alt: next.name }) : null,
+      el('div', { class: 'lh-body' },
+        el('div', { class: 'k' }, next.provider || 'Launch', next.live ? el('span', { class: 'live' }, '● live now') : null),
+        el('div', { class: 'lh-name' }, next.mission || next.name),
+        el('div', { class: 'lh-sub' }, next.rocket || '', next.orbit ? ` · to ${next.orbit}` : ''),
+        el('div', { class: 'lh-count', 'data-net': next.when.t || '', 'data-vague': vague(next.precision) ? '1' : '' }, next.when.t && !vague(next.precision) ? countdown(next.when.t - now) : '—'),
+        el('div', { class: 'lh-when' }, next.when.text, next.statusAbbrev ? el('span', { class: `lstat ${(LAUNCH_STATUS[next.statusAbbrev] || ['', 'tbd'])[1]}` }, (LAUNCH_STATUS[next.statusAbbrev] || [next.statusName])[0]) : null),
+        el('div', { class: 'lh-where' }, [next.pad, next.place].filter(Boolean).join(' · ')),
+        next.probability != null && next.probability >= 0 ? el('div', { class: 'lh-where' }, `Weather ${next.probability}% favourable`, next.weather ? el('span', { class: 'note' }, ` · ${next.weather}`) : null) : null,
+        el('div', { class: 'lh-links' },
+          next.watch ? el('a', { class: 'btn', href: next.watch, target: '_blank', rel: 'noopener' }, `▶ Watch${next.watchWho ? ' on ' + next.watchWho : ''}`) : null,
+          next.info ? el('a', { class: 'btn', href: next.info, target: '_blank', rel: 'noopener' }, 'Mission details') : null,
+          el('a', { class: 'btn', href: `https://www.rocketlaunch.live/`, target: '_blank', rel: 'noopener' }, 'Full schedule'))));
+    body.append(hero);
+    if (next.about) body.append(el('details', { style: 'margin-top:10px' }, el('summary', { style: 'cursor:pointer;color:var(--accent)' }, 'About this mission'), el('p', { style: 'color:var(--text2);margin:8px 0 0' }, next.about)));
+    const rest = list.slice(1);
+    if (rest.length) body.append(el('div', { style: 'margin-top:14px' }, el('h3', {}, 'After that'),
+      el('div', { class: 'chartwrap' }, el('table', { class: 'data narrow' },
+        el('thead', {}, el('tr', {}, ['Countdown', 'When', 'Mission', 'Rocket', 'From', ''].map(h => el('th', { style: 'text-align:left' }, h)))),
+        el('tbody', {}, rest.map(L => el('tr', {},
+          el('td', { class: 'lcount', 'data-net': L.when.t || '', 'data-vague': vague(L.precision) ? '1' : '' }, L.when.t && !vague(L.precision) ? countdown(L.when.t - now) : '—'),
+          el('td', {}, L.when.text, L.statusAbbrev ? el('div', { class: 'note' }, (LAUNCH_STATUS[L.statusAbbrev] || [L.statusName])[0]) : null),
+          el('td', { style: 'white-space:normal;min-width:150px' }, L.mission || L.name, L.orbit ? el('div', { class: 'note' }, `to ${L.orbit}`) : null),
+          el('td', { style: 'white-space:normal' }, L.rocket || '', el('div', { class: 'note' }, L.provider || '')),
+          el('td', { style: 'white-space:normal;min-width:130px' }, L.place || ''),
+          el('td', {}, L.watch ? el('a', { href: L.watch, target: '_blank', rel: 'noopener' }, 'Watch') : L.info ? el('a', { href: L.info, target: '_blank', rel: 'noopener' }, 'Details') : ''))))))));
+    body.append(el('p', { class: 'note', style: 'margin-top:10px' }, 'Schedule from ', el('a', { href: 'https://thespacedevs.com/llapi', target: '_blank', rel: 'noopener' }, 'The Space Devs Launch Library'), '. Times slip often; a date with no clock time has not been set to the minute yet. ', el('a', { href: 'https://www.rocketlaunch.live/', target: '_blank', rel: 'noopener' }, 'rocketlaunch.live'), ' lists the same flights.'));
+  };
+  loadLaunches().then(draw).catch(() => draw(null));
+  if (launchState.timer) clearInterval(launchState.timer);
+  launchState.timer = setInterval(() => {
+    const now = Date.now();
+    document.querySelectorAll('.lh-count[data-net], .lcount[data-net]').forEach(e => {
+      const t = +e.getAttribute('data-net'); if (!t || e.getAttribute('data-vague') === '1') return;
+      e.textContent = countdown(t - now);
+      e.classList.toggle('soon', t - now > 0 && t - now < 6 * HOUR);
+    });
+  }, 1000);
+  return section('Launches', el('p', { class: 'lede' }, 'The next rockets off the pad anywhere in the world, counting down live.'), body);
 }
 
 // ---------- NESDIS GOES imagery + NASA APOD ----------

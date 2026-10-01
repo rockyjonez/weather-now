@@ -17,6 +17,7 @@ Live: https://weather-now.exe.xyz
 | 10-day | Day cards with NWS text, icons, highs and lows for seven days and Open-Meteo model guidance for days 8 to 10; highs/lows, precipitation and wind charts across all ten days |
 | Health & comfort | Xweather-style 1–5 indices for migraine, arthritis, sinus, allergy (pollen), asthma & air quality, cold & flu, UV and outdoor discomfort, all on the same higher-is-worse scale, with the reasons behind each score; current pressure trend, AQI, humidity, UV; a 96-hour barometric pressure chart; a 7-day outlook table |
 | Overview (sky block) | Live map of the ISS, Tiangong, Hubble, NOAA-20, Terra, Landsat 9 and GOES-19, plus the whole Starlink constellation (count overhead, optional 10,000-dot map layer, next visible pass of the newest launch train) from CelesTrak orbital elements (satellite.js SGP4), with ground track, horizon footprint and day/night terminator; naked-eye pass predictions over the location for 10 days; tonight's sky and a 10-day calendar of sun/moon times, moon phase, visible planets, moon phases, equinoxes, meteor-shower peaks, eclipses and conjunctions |
+| Launches (sky sub-tab) | Live countdown to the next rocket launch anywhere in the world, with vehicle, mission, orbit, pad, launch-weather odds, a watch link and mission details; the nine flights after it in a table, each counting down. From The Space Devs Launch Library |
 | NESDIS imagery (sky sub-tab) | Live GOES-East/West imagery from NOAA NESDIS STAR: local sector, CONUS or full disk; GeoColor, clean IR, visible, water vapor, shortwave IR, air mass, sandwich, fire temperature, dust; still or animated loop |
 | Astronomy picture of the day | NASA APOD at the bottom of every view, with explanation and full-resolution link |
 | Daily learning & Hebrew calendar | Below the picture on every view: Hebrew date (after-sunset aware), parasha, next candle lighting and havdalah for the location, today's holiday, the Sefaria learning cycles Tiby follows (Daf Yomi first; 929, Daily Rambam, Daf a Week, Arukh HaShulchan Yomi and Yerushalmi Yomi are hidden) linked to the text, and a two-week list of holidays and Shabbat times |
@@ -142,6 +143,13 @@ Then open `http://localhost:8765/?lat=37.7749&lon=-122.4194`.
 the VM's proxy port. See the script for the one-time nginx setup.
 
 ## Data notes
+
+- The launch schedule comes from The Space Devs Launch Library
+  (`ll.thespacedevs.com`). Unauthenticated callers are rate limited to roughly 15
+  requests an hour, so `deploy.sh` caches the feed hourly on the VM as
+  `launches.json` and the page calls the API directly only if that file is
+  unreachable. rocketlaunch.live lists the same flights and is linked from the
+  tab.
 
 - NOAA retired every NDFD forecast workspace from nowCOAST (temperature,
   feels-like, rain chance and amount, snow, sky cover, wind, humidity); those
