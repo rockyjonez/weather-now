@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Weather Now — where the data comes from</title>
+<meta name="description" content="Every data source behind the Weather Now dashboard: what it provides, where it appears, and whether it needs a key.">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+<style>
+:root{
+  --ink:#1a1d21; --ink2:#4a5058; --muted:#767d87; --rule:#e2e5ea; --bg:#ffffff; --panel:#f7f8fa;
+  --accent:#1c4e80; --accent-soft:#eaf1f8; --good:#1b6b4a; --warn:#8a5a00;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 "Source Sans 3",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+.wrap{max-width:1040px;margin:0 auto;padding:40px 24px 72px}
+header{border-bottom:3px solid var(--ink);padding-bottom:18px;margin-bottom:28px}
+.eyebrow{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);font-weight:600}
+h1{font-family:"Source Serif 4",Georgia,serif;font-size:34px;line-height:1.15;margin:8px 0 10px;font-weight:600;letter-spacing:-.01em}
+.standfirst{font-size:18px;color:var(--ink2);margin:0;max-width:66ch}
+.meta{font-size:13px;color:var(--muted);margin-top:14px}
+.meta a{color:var(--accent)}
+h2{font-family:"Source Serif 4",Georgia,serif;font-size:21px;margin:38px 0 6px;font-weight:600;letter-spacing:-.01em}
+h2:first-of-type{margin-top:30px}
+h2 .n{color:var(--muted);font-family:"Source Sans 3",sans-serif;font-size:13px;font-weight:600;letter-spacing:.08em;margin-left:8px;text-transform:uppercase}
+.lede{color:var(--ink2);margin:0 0 14px;max-width:72ch}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:12px;margin:22px 0 4px}
+.fact{background:var(--panel);border:1px solid var(--rule);border-radius:8px;padding:13px 15px}
+.fact .v{font-family:"Source Serif 4",Georgia,serif;font-size:27px;font-weight:600;line-height:1.1}
+.fact .k{font-size:12.5px;color:var(--ink2);margin-top:3px}
+.tablewrap{overflow-x:auto;border:1px solid var(--rule);border-radius:8px;margin-top:4px}
+table{border-collapse:collapse;width:100%;min-width:720px;font-size:14.5px}
+th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--rule);vertical-align:top}
+thead th{background:var(--panel);font-size:11.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink2);font-weight:700;white-space:nowrap}
+tbody tr:last-child td{border-bottom:0}
+tbody tr:hover{background:#fcfcfd}
+td.src{font-weight:600;white-space:nowrap}
+td.src a{color:var(--accent);text-decoration:none;border-bottom:1px solid #c3d5e6}
+td.src a:hover{border-bottom-color:var(--accent)}
+td.src .host{display:block;font-weight:400;font-size:12px;color:var(--muted);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;margin-top:2px}
+.tag{display:inline-block;font-size:11px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;border-radius:999px;padding:2px 9px;white-space:nowrap}
+.tag.open{background:#e8f3ed;color:var(--good)}
+.tag.cached{background:#fdf2dd;color:var(--warn)}
+.note{font-size:13.5px;color:var(--muted);margin-top:10px;max-width:74ch}
+.callout{background:var(--accent-soft);border-left:4px solid var(--accent);border-radius:0 6px 6px 0;padding:14px 18px;margin:26px 0}
+.callout p{margin:0;max-width:70ch}
+.callout p + p{margin-top:8px}
+footer{margin-top:46px;padding-top:18px;border-top:1px solid var(--rule);font-size:13.5px;color:var(--muted)}
+footer a{color:var(--accent)}
+@media print{
+  body{font-size:11pt} .wrap{padding:0;max-width:none} .tablewrap{overflow:visible;border:0}
+  table{min-width:0;font-size:9.5pt} h2{page-break-after:avoid} .tablewrap{page-break-inside:avoid}
+  tbody tr:hover{background:none}
+}
+@media(max-width:600px){ h1{font-size:27px} .standfirst{font-size:16.5px} .wrap{padding:28px 16px 56px} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header data-container="Header">
+  <div class="eyebrow">Weather Now · reference</div>
+  <h1>Where the weather dashboard gets its data</h1>
+  <p class="standfirst">Every source is a free public service. None of them needs an API key, a licence or an account, so the whole dashboard can be rebuilt or forked without asking anyone for access.</p>
+  <div class="meta">
+    Dashboard: <a href="https://weather-now.exe.xyz">weather-now.exe.xyz</a> ·
+    Source: <a href="https://github.com/rockyjonez/weather-now">github.com/rockyjonez/weather-now</a> ·
+    Checked 1 October 2026
+  </div>
+</header>
+
+<div class="facts" data-container="Summary numbers">
+  <div class="fact"><div class="v">17</div><div class="k">data providers</div></div>
+  <div class="fact"><div class="v">0</div><div class="k">API keys needed</div></div>
+  <div class="fact"><div class="v">3</div><div class="k">cached on our server</div></div>
+  <div class="fact"><div class="v">4</div><div class="k">countries covered</div></div>
+</div>
+
+<div class="callout" data-container="How to read this">
+  <p><strong>Two ways a source reaches the page.</strong> Most are called straight from the browser, so the data is as fresh as the provider makes it. Three are fetched by a scheduled job on our server first, because those providers limit how often an unregistered caller may ask. Every viewer then shares one copy.</p>
+  <p>The <span class="tag open">direct</span> and <span class="tag cached">cached</span> tags in the last column show which is which.</p>
+</div>
+
+<h2>Forecasts and current conditions <span class="n">4 sources</span></h2>
+<p class="lede">The National Weather Service is the primary source inside the United States. Open-Meteo covers everywhere else and fills the gaps the weather service leaves.</p>
+<div class="tablewrap"><table>
+  <thead><tr><th>Source</th><th>What it provides</th><th>Where it appears</th><th>How we call it</th></tr></thead>
+  <tbody>
+    <tr><td class="src"><a href="https://www.weather.gov/documentation/services-web-api">National Weather Service</a><span class="host">api.weather.gov</span></td>
+        <td>Hourly forecast grid, seven-day forecast, station observations, active warnings</td>
+        <td>Current conditions, next 12 hours, 10-day, every weather tab, alerts</td>
+        <td><span class="tag open">direct</span></td></tr>
+    <tr><td class="src"><a href="https://open-meteo.com/">Open-Meteo</a><span class="host">api.open-meteo.com</span></td>
+        <td>Model forecast: temperature, pressure, humidity, wind, rain, snow, UV, storm energy</td>
+        <td>Days 8 to 10, health scores, everything outside the United States</td>
+        <td><span class="tag open">direct</span></td></tr>
+    <tr><td class="src"><a href="https://open-meteo.com/en/docs/air-quality-api">Open-Meteo air quality</a><span class="host">air-quality-api.open-meteo.com</span></td>
+        <td>Air quality index, fine particles, ozone, dust, pollen where measured</td>
+        <td>Health and comfort scores</td>
+        <td><span class="tag open">direct</span></td></tr>
+    <tr><td class="src"><a href="https://nominatim.org/">Nominatim</a><span class="host">nominatim.openstreetmap.org</span></td>
+        <td>Turns a typed place name or postcode into coordinates</td>
+        <td>The search box</td>
+        <td><span class="tag open">direct</span></td></tr>
+  </tbody>
+</table></div>
+<p class="note">Outside the United States the dashboard links to the national warning service rather than reading it: Environment Canada, Mexico's Servicio Meteorológico Nacional, and Brazil's INMET. None of the three publishes a warning feed we can read without an agreement.</p>
+
+<h2>Maps, radar and satellite imagery <span class="n">6 sources</span></h2>
+<p class="lede">NOAA retired its forecast map layers in September 2026. The layers listed here are the ones confirmed to be publishing as of 1 October 2026.</p>
+<div class="tablewrap"><table>
+  <thead><tr><th>Source</th><th>What it provides</th><th>Where it appears</th><th>How we call it</th></tr></thead>
+  <tbody>
+    <tr><td class="src"><a href="https://nowcoast.noaa.gov/">NOAA nowCOAST</a><span class="host">nowcoast.noaa.gov</span></td>
+        <td>Radar reflectivity, lightning strike density, four satellite channels, warning polygons</td>
+        <td>Map tab, radar loop on the storms tab</td>
+        <td><span class="tag open">direct</span></td></tr>
+    <tr><td class="src"><a href="https://mapservices.weather.noaa.gov/">NOAA map services</a><span class="host">mapservices.weather.noaa.gov</span></td>
+        <td>Air quality forecasts for fine particles, ozone, smoke and dust; snow depth; flash flood guidance</td>
+        <td>Map tab</td>
+        <td><span class="tag open">direct</span></td></tr>
+    <tr><td class="src"><a href="https://www.rainviewer.com/api.html">RainViewer</a><span class="host">api.rainviewer.com</span></td>
+        <td>Worldwide radar composite, including short-range nowcast frames</td>
+        <td>Map tab, and the default radar outside the United States</td>
+        <td><span class="tag open">direct</span></td></tr>
+    <tr><td class="src"><a href="https://www.star.nesdis.noaa.gov/GOES/">NOAA NESDIS STAR</a><span class="host">cdn.star.nesdis.noaa.gov</span></td>
+        <td>GOES satellite imagery in nine products, as stills or animated loops</td>
+        <td>Satellite imagery tab</td>
+        <td><span class="tag open">direct</span></td></tr>
+    <tr><td class="src"><a href="https://eccc-msc.github.io/open-data/msc-geomet/readme_en/">Environment Canada GeoMet</a><span class="host">geo.weather.gc.ca</span></td>
+        <td>Canadian rain and snow radar at 1 km resolution</td>
+        <td>Map tab, when the location is in Canada</td>
+        <td><span class="tag open">direct</span></td></tr>
+    <tr><td class="src"><a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a><span class="host">tile.openstreetmap.org</span></td>
+        <td>The base map under every weather layer</td>
+        <td>Map tab, satellite tracker</td>
+        <td><span class="tag open">direct</span></td></tr>
+  </tbody>
+</table></div>
+
+<h2>Space <span class="n">4 sources</span></h2>
+<p class="lede">Orbits are propagated in the browser from published orbital elements, so satellite positions update every two seconds without any further calls.</p>
+<div class="tablewrap"><table>
+  <thead><tr><th>Source</th><th>What it provides</th><th>Where it appears</th><th>How we call it</th></tr></thead>
+  <tbody>
+    <tr><td class="src"><a href="https://celestrak.org/">CelesTrak</a><span class="host">celestrak.org</span></td>
+        <td>Orbital elements for seven tracked satellites, plus about 10,700 Starlink satellites</td>
+        <td>Satellite tracker, pass predictions</td>
+        <td><span class="tag cached">cached</span></td></tr>
+    <tr><td class="src"><a href="https://thespacedevs.com/llapi">Launch Library</a><span class="host">ll.thespacedevs.com</span></td>
+        <td>Launch schedule, vehicle, mission, pad, launch-weather odds, webcast links</td>
+        <td>Launches tab</td>
+        <td><span class="tag cached">cached</span></td></tr>
+    <tr><td class="src"><a href="https://science.nasa.gov/apod/">NASA picture of the day</a><span class="host">science.nasa.gov</span></td>
+        <td>The daily astronomy photograph, its explanation and credit</td>
+        <td>Bottom of every view</td>
+        <td><span class="tag cached">cached</span></td></tr>
+    <tr><td class="src"><a href="https://wheretheiss.at/w/developer">Where the ISS at</a><span class="host">api.wheretheiss.at</span></td>
+        <td>Space station orbital elements</td>
+        <td>Backup only, if CelesTrak cannot be reached</td>
+        <td><span class="tag open">direct</span></td></tr>
+  </tbody>
+</table></div>
+<p class="note">Sun, moon, planet and eclipse positions are not fetched at all. They are calculated in the page from standard astronomical formulas, accurate to a fraction of a degree.</p>
+
+<h2>Hebrew calendar and daily learning <span class="n">2 sources</span></h2>
+<div class="tablewrap"><table>
+  <thead><tr><th>Source</th><th>What it provides</th><th>Where it appears</th><th>How we call it</th></tr></thead>
+  <tbody>
+    <tr><td class="src"><a href="https://www.sefaria.org/developers">Sefaria</a><span class="host">sefaria.org</span></td>
+        <td>The day's page in each learning cycle, linked to the text</td>
+        <td>Daf Yomi tab</td>
+        <td><span class="tag open">direct</span></td></tr>
+    <tr><td class="src"><a href="https://www.hebcal.com/home/developer-apis">Hebcal</a><span class="host">hebcal.com</span></td>
+        <td>Hebrew date, weekly portion, candle lighting and havdalah times, holidays</td>
+        <td>Daf Yomi tab</td>
+        <td><span class="tag open">direct</span></td></tr>
+  </tbody>
+</table></div>
+<p class="note">Candle lighting and havdalah are calculated for the viewer's own coordinates, so the times are local rather than taken from a city list.</p>
+
+<h2>Supporting services <span class="n">1 source</span></h2>
+<div class="tablewrap"><table>
+  <thead><tr><th>Source</th><th>What it provides</th><th>Where it appears</th><th>How we call it</th></tr></thead>
+  <tbody>
+    <tr><td class="src"><a href="https://cdnjs.com/">cdnjs</a><span class="host">cdnjs.cloudflare.com</span></td>
+        <td>Two libraries: Leaflet for maps, satellite.js for orbit propagation</td>
+        <td>Map tab, satellite tracker</td>
+        <td><span class="tag open">direct</span></td></tr>
+  </tbody>
+</table></div>
+<p class="note">Google Fonts serves the two typefaces. Everything else, including all charts, runs on code in the single page file. There is no build step and no framework.</p>
+
+<h2>What this costs and what could break it</h2>
+<p class="lede">Running cost is the virtual machine and nothing else. The risks worth knowing about are these.</p>
+<div class="tablewrap"><table>
+  <thead><tr><th>Risk</th><th>What happens</th><th>What we do about it</th></tr></thead>
+  <tbody>
+    <tr><td><strong>A provider retires an endpoint</strong></td>
+        <td>Happened twice in September 2026. NOAA dropped ten forecast map layers; NASA moved the picture of the day and shut off its old interface.</td>
+        <td>Layers are checked against the provider's live catalogue, and a replacement is wired in. Both outages were fixed the day they were noticed.</td></tr>
+    <tr><td><strong>Rate limits</strong></td>
+        <td>Launch Library allows an unregistered caller about 15 requests an hour. CelesTrak and NASA throttle too.</td>
+        <td>Those three are fetched once by our server on a schedule. Viewers read our copy, so the number of visitors does not affect the provider.</td></tr>
+    <tr><td><strong>A provider is briefly unreachable</strong></td>
+        <td>A section would be blank.</td>
+        <td>Each cached source has a chain of fallbacks, ending with the last good copy held in the browser. A tab that genuinely has no data says so rather than showing zeros.</td></tr>
+  </tbody>
+</table></div>
+
+<footer data-container="Footer">
+  <p>Prepared for Dienert · Kineviz · 1 October 2026. Every link above goes to the provider's own documentation.</p>
+</footer>
+
+</div>
+</body>
+</html>

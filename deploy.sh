@@ -10,6 +10,8 @@ ssh "$HOST" "sudo mkdir -p $ROOT && sudo chown \$USER $ROOT"
 scp -q index.html widget.html manifest.webmanifest sw.js "$HOST:$ROOT/"
 ssh "$HOST" "mkdir -p $ROOT/icons"
 scp -q icons/*.png icons/icon.svg "$HOST:$ROOT/icons/"
+ssh "$HOST" "mkdir -p $ROOT/docs"
+scp -q docs/*.html "$HOST:$ROOT/docs/"
 ssh "$HOST" "mkdir -p $ROOT/grove"
 scp -q grove/*.md "$HOST:$ROOT/grove/"
 
