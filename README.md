@@ -165,9 +165,13 @@ the VM's proxy port. See the script for the one-time nginx setup.
   US pollen is an estimate from season and weather because no free count feed
   exists; it is marked with an asterisk and capped at High.
 
-- APOD is read from `apod.json`, which `deploy.sh` keeps fresh on the VM with an
-  hourly cron job using NASA's public DEMO_KEY (so viewers never hit the API
-  rate limit); the page falls back to calling the API directly.
+- NASA retired `apod.nasa.gov` and `api.nasa.gov/planetary/apod` on 2026-10-01;
+  the picture now comes from `science.nasa.gov/wp-json/wp/v2/apod-basic`, which
+  needs no key and sends CORS headers. It is read from `apod.json`, which
+  `deploy.sh` keeps fresh on the VM with an hourly cron job that normalises the
+  new fields into the shape the page has always read; the page falls back to
+  calling the endpoint directly and rejects any cached record whose image is the
+  site logo rather than a picture.
 - GOES imagery comes straight from `cdn.star.nesdis.noaa.gov`; the local sector
   is picked from the location's latitude and longitude.
 

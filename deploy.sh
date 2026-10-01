@@ -33,21 +33,41 @@ sudo rm -f /etc/nginx/sites-enabled/default
 sudo nginx -t && (sudo systemctl reload nginx || sudo systemctl start nginx)
 sudo systemctl enable nginx >/dev/null 2>&1 || true
 curl -s -o /dev/null -w "local check: %{http_code}\n" http://127.0.0.1:8000/'
-# Hourly cache of NASA's Astronomy Picture of the Day (keeps viewers off the API rate limit).
-ssh "$HOST" 'sudo tee /usr/local/bin/apod-fetch.sh >/dev/null <<"EOF"
+# Hourly cache of NASA's Astronomy Picture of the Day.
+# NASA retired apod.nasa.gov and api.nasa.gov/planetary/apod on 2026-10-01; the picture now comes from
+# science.nasa.gov's own endpoint. We normalise it into the shape the page has always read.
+ssh "$HOST" 'sudo tee /usr/local/bin/apod-fetch.sh >/dev/null <<"SHAPOD"
 #!/usr/bin/env bash
 set -u
 OUT=/var/www/weather-now/apod.json
 TMP=$(mktemp)
-if curl -fsS -m 30 "https://api.nasa.gov/planetary/apod?api_key=DEMO_KEY&thumbs=true" -o "$TMP" && python3 -c "import json,sys; j=json.load(open(sys.argv[1])); assert j.get(\"url\") or j.get(\"thumbnail_url\")" "$TMP"; then
-  mv "$TMP" "$OUT"; chmod 644 "$OUT"
-else
-  rm -f "$TMP"
+if curl -fsS -m 45 "https://science.nasa.gov/wp-json/wp/v2/apod-basic?per_page=1" -o "$TMP.raw"; then
+  python3 - "$TMP.raw" "$TMP" <<"PYAPOD"
+import html, json, re, sys
+raw, out = sys.argv[1], sys.argv[2]
+j = json.load(open(raw))
+d = j[0] if isinstance(j, list) else j
+strip = lambda s: re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", "", s or ""))).strip()
+def sized(u, w):
+    if not u:
+        return u
+    return re.sub(r"([?&])w=\d+", r"\g<1>w=%d" % w, u) if "assets.science.nasa.gov" in u else u
+img = d.get("hdurl") or d.get("url")
+rec = {"date": d["date"], "title": strip(d.get("title")),
+       "explanation": re.sub(r"^Explanation:\s*", "", strip(d.get("explanation")), flags=re.I),
+       "url": sized(img, 1200), "hdurl": sized(img, 2400),
+       "media_type": d.get("media_type"), "copyright": strip(d.get("copyright") or d.get("credit")),
+       "permalink": d.get("permalink") or d.get("url"), "alt": strip(d.get("alt"))}
+assert rec["url"], "no image url"
+json.dump(rec, open(out, "w"))
+PYAPOD
+  if [ -s "$TMP" ]; then mv "$TMP" "$OUT"; chmod 644 "$OUT"; fi
 fi
-EOF
+rm -f "$TMP" "$TMP.raw"
+SHAPOD
 sudo chmod +x /usr/local/bin/apod-fetch.sh
 ( crontab -l 2>/dev/null | grep -v apod-fetch; echo "17 * * * * /usr/local/bin/apod-fetch.sh" ) | crontab -
-[ -s /var/www/weather-now/apod.json ] || /usr/local/bin/apod-fetch.sh'
+/usr/local/bin/apod-fetch.sh'
 # Starlink constellation elements from CelesTrak, every 6 hours (1.8 MB; keeps every viewer off CelesTrak's rate limit).
 ssh "$HOST" 'sudo tee /usr/local/bin/starlink-fetch.sh >/dev/null <<"EOF"
 #!/usr/bin/env bash

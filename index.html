@@ -275,7 +275,7 @@ footer{margin-top:28px;font-size:13px;color:var(--muted);line-height:1.6}
 <script>
 'use strict';
 const API = 'https://api.weather.gov';
-const BUILD = '2026-09-25.1';
+const BUILD = '2026-10-01.1';
 const HOUR = 3600e3;
 const $ = s => document.querySelector(s);
 function el(tag, attrs = {}, ...kids) {
@@ -1368,6 +1368,19 @@ function healthSection(d) {
 }
 
 // ---------- NESDIS GOES imagery + NASA APOD ----------
+// NASA retired apod.nasa.gov and api.nasa.gov/planetary/apod on 2026-10-01; the picture now lives at science.nasa.gov.
+const APOD_API = 'https://science.nasa.gov/wp-json/wp/v2/apod-basic';
+const APOD_HOME = 'https://science.nasa.gov/apod/';
+// A cached record is only usable if it carries a real picture: the old scrape sometimes saved the site logo.
+const apodOk = d => !!(d && d.date && d.title && (d.url || d.hdurl) && !/wp-content\/themes|nasa-logo|logo@/i.test(d.url || d.hdurl));
+const stripTags = h => { if (!h) return ''; const d = document.createElement('div'); d.innerHTML = h; return (d.textContent || '').replace(/\s+/g, ' ').trim(); };
+function normalizeApod(d) {
+  if (!d) return null;
+  const sized = (u, w) => u && u.includes('assets.science.nasa.gov') ? u.replace(/([?&])w=\d+/, `$1w=${w}`) : u;
+  return { date: d.date, title: stripTags(d.title), explanation: stripTags(d.explanation).replace(/^Explanation:\s*/i, ''),
+    url: sized(d.hdurl || d.url, 1200), hdurl: sized(d.hdurl || d.url, 2400), media_type: d.media_type,
+    copyright: stripTags(d.copyright || d.credit), permalink: d.permalink || d.url, alt: stripTags(d.alt) };
+}
 const NESDIS_CDN = 'https://cdn.star.nesdis.noaa.gov';
 const NESDIS_PRODUCTS = [['GEOCOLOR', 'GeoColor', 'True colour by day, infrared with city lights at night.'], ['13', 'Clean infrared', 'Band 13 cloud-top temperature: colder, higher clouds are brighter.'], ['02', 'Visible', 'Band 2 red visible, 0.5 km resolution; dark at night.'], ['08', 'Water vapor', 'Band 8 upper-level moisture and jet-stream flow.'], ['07', 'Shortwave IR', 'Band 3.9 µm: hot spots, fires and fog at night.'], ['AirMass', 'Air mass', 'RGB of water-vapor and ozone bands: cyclones, jets, dry intrusions.'], ['Sandwich', 'Sandwich', 'Visible texture blended with infrared colour for storm tops.'], ['FireTemperature', 'Fire temperature', 'RGB tuned to show active fire intensity.'], ['Dust', 'Dust', 'RGB that highlights blowing dust and volcanic ash.']];
 function nesdisSector(lat, lon) {
@@ -1418,22 +1431,21 @@ function nesdisSection() {
 async function loadApod() {
   const host = document.getElementById('apod'); if (!host) return;
   let data = null;
-  for (const u of ['apod.json', 'https://weather-now.exe.xyz/apod.json']) { try { const r = await fetch(u, { cache: 'no-cache' }); if (r.ok) { const j = await r.json(); if (j && (j.url || j.thumbnail_url)) { data = j; break; } } } catch (e) { } }
-  if (!data) { try { const r = await fetch('https://api.nasa.gov/planetary/apod?api_key=DEMO_KEY&thumbs=true'); if (r.ok) data = await r.json(); } catch (e) { } }
-  if (!data) { try { const c = JSON.parse(localStorage.getItem('wx.apod') || 'null'); if (c && c.url) data = c; } catch (e) { } }
+  for (const u of ['apod.json', 'https://weather-now.exe.xyz/apod.json']) { try { const r = await fetch(u, { cache: 'no-cache' }); if (r.ok) { const j = await r.json(); if (apodOk(j)) { data = j; break; } } } catch (e) { } }
+  if (!data) { try { const r = await fetch(`${APOD_API}?per_page=1`); if (r.ok) { const j = await r.json(); if (Array.isArray(j) && j[0]) { const n = normalizeApod(j[0]); if (apodOk(n)) data = n; } } } catch (e) { } }
+  if (!data) { try { const c = JSON.parse(localStorage.getItem('wx.apod') || 'null'); if (apodOk(c)) data = c; } catch (e) { } }
   host.innerHTML = '';
-  if (!data || !data.url) { host.append(section('Astronomy picture of the day', el('p', { class: 'empty' }, 'NASA’s picture of the day is not reachable right now. ', el('a', { href: 'https://apod.nasa.gov/apod/astropix.html', target: '_blank', rel: 'noopener' }, 'Open it on apod.nasa.gov')))); return; }
+  if (!data) { host.append(section('Astronomy picture of the day', el('p', { class: 'empty' }, 'NASA’s picture of the day is not reachable right now. ', el('a', { href: APOD_HOME, target: '_blank', rel: 'noopener' }, 'Open it on science.nasa.gov')))); return; }
   try { localStorage.setItem('wx.apod', JSON.stringify(data)); } catch (e) { }
-  let media;
-  if (data.media_type === 'video') {
-    const yt = /(?:youtube\.com\/embed\/|youtu\.be\/|youtube\.com\/watch\?v=)([\w-]+)/.exec(data.url || '');
-    media = yt ? el('div', { class: 'apod-video' }, el('iframe', { src: `https://www.youtube.com/embed/${yt[1]}`, title: data.title, allow: 'accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture', allowfullscreen: '', loading: 'lazy' })) : el('a', { href: data.url, target: '_blank', rel: 'noopener' }, data.thumbnail_url ? el('img', { src: data.thumbnail_url, alt: data.title }) : `Watch: ${data.title}`);
-  } else media = el('a', { href: data.hdurl || data.url, target: '_blank', rel: 'noopener', title: 'Open full resolution' }, el('img', { src: data.url, alt: data.title, loading: 'lazy' }));
+  const img = data.url || data.hdurl, full = data.hdurl || data.url, page = data.permalink || APOD_HOME;
+  const media = el('a', { href: full, target: '_blank', rel: 'noopener', title: 'Open the full-size picture' }, el('img', { src: img, alt: data.alt || data.title }));
   host.append(makeCollapsible(el('section', { class: 'card apod', 'data-container': 'Astronomy picture of the day' }), 'Astronomy picture of the day', [
-    el('p', { class: 'lede' }, el('b', {}, data.title), ` · ${dayMD(data.date)} ${data.date.slice(0, 4)}`, data.copyright ? el('span', { class: 'note' }, ` · © ${data.copyright.trim()}`) : null),
+    el('p', { class: 'lede' }, el('b', {}, data.title), ` · ${dayMD(data.date)} ${data.date.slice(0, 4)}`,
+      data.media_type === 'video' ? el('span', { class: 'note' }, ' · today’s entry is a video; this is its still') : null,
+      data.copyright ? el('span', { class: 'note' }, ` · © ${data.copyright}`) : null),
     media,
-    el('details', { style: 'margin-top:10px' }, el('summary', { style: 'cursor:pointer;color:var(--accent)' }, 'Explanation'), el('p', { style: 'color:var(--text2);margin:8px 0 0' }, data.explanation || '')),
-    el('p', { class: 'note', style: 'margin-top:8px' }, 'NASA Astronomy Picture of the Day. ', el('a', { href: `https://apod.nasa.gov/apod/ap${data.date.slice(2).replace(/-/g, '')}.html`, target: '_blank', rel: 'noopener' }, 'Open on apod.nasa.gov'))]));
+    data.explanation ? el('details', { style: 'margin-top:10px' }, el('summary', { style: 'cursor:pointer;color:var(--accent)' }, 'Explanation'), el('p', { style: 'color:var(--text2);margin:8px 0 0' }, data.explanation)) : null,
+    el('p', { class: 'note', style: 'margin-top:8px' }, 'NASA Astronomy Picture of the Day. ', el('a', { href: page, target: '_blank', rel: 'noopener' }, 'Open on science.nasa.gov'))]));
 }
 
 // ---------- outside NWS coverage: Open-Meteo fallback (Canada, Mexico, Brazil and the rest of the world) ----------

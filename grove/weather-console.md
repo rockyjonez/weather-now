@@ -536,12 +536,12 @@ viewof nesdisProduct = Inputs.select(new Map([["GeoColor", "GEOCOLOR"], ["Clean 
 {
   let d = null;
   try { const r = await fetch("https://weather-now.exe.xyz/apod.json", { cache: "no-cache" }); if (r.ok) d = await r.json(); } catch (e) { }
-  if (!d || !d.url) { try { const r = await fetch("https://api.nasa.gov/planetary/apod?api_key=DEMO_KEY&thumbs=true"); if (r.ok) d = await r.json(); } catch (e) { } }
-  if (!d || !d.url) return html`<div class="wc"><div class="wc-card"><div class="wc-h">Astronomy picture of the day</div><div class="wc-muted">Not reachable right now. <a href="https://apod.nasa.gov/apod/astropix.html" target="_blank" style="color:#f5b83d">Open apod.nasa.gov</a></div></div></div>`;
+  if (!d || !d.url) { try { const r = await fetch("https://science.nasa.gov/wp-json/wp/v2/apod-basic?per_page=1"); if (r.ok) { const j = await r.json(); const x = Array.isArray(j) ? j[0] : j; if (x) { const strip = h => (h || "").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim(); d = { date: x.date, title: strip(x.title), explanation: strip(x.explanation).replace(/^Explanation:\s*/i, ""), url: x.hdurl || x.url, permalink: x.permalink || x.url, copyright: strip(x.copyright || x.credit) }; } } } catch (e) { } }
+  if (!d || !d.url) return html`<div class="wc"><div class="wc-card"><div class="wc-h">Astronomy picture of the day</div><div class="wc-muted">Not reachable right now. <a href="https://science.nasa.gov/apod/" target="_blank" style="color:#f5b83d">Open science.nasa.gov/apod</a></div></div></div>`;
   const img = d.media_type === "video" ? (d.thumbnail_url ? `<a href="${d.url}" target="_blank"><img class="wc-img" src="${d.thumbnail_url}"></a>` : `<a href="${d.url}" target="_blank" style="color:#f5b83d">Watch today's video</a>`) : `<a href="${d.hdurl || d.url}" target="_blank" rel="noopener"><img class="wc-img" src="${d.url}" alt="${d.title}"></a>`;
   return html`<div class="wc"><div class="wc-card"><div class="wc-h">Astronomy picture of the day</div><div style="margin-bottom:8px"><b style="color:#eaf2ff">${d.title}</b> <span class="wc-muted">· ${d.date}${d.copyright ? " · © " + d.copyright.trim() : ""}</span></div>${img}
     <details style="margin-top:8px"><summary style="color:#f5b83d;cursor:pointer">Explanation</summary><p style="color:#b9c9e6">${d.explanation || ""}</p></details>
-    <div class="wc-muted" style="margin-top:6px">NASA APOD · <a href="https://apod.nasa.gov/apod/ap${d.date.slice(2).replace(/-/g, "")}.html" target="_blank" style="color:#f5b83d">apod.nasa.gov</a></div></div></div>`;
+    <div class="wc-muted" style="margin-top:6px">NASA APOD · <a href="${d.permalink || "https://science.nasa.gov/apod/"}" target="_blank" style="color:#f5b83d">science.nasa.gov</a></div></div></div>`;
 }
 ```
 
