@@ -64,7 +64,12 @@ health indices; the Map view switches to RainViewer global radar (plus
 Environment Canada GeoMet radar in Canada), nowCOAST lightning and global
 satellite; official warnings are linked to Environment Canada, CONAGUA or INMET
 rather than read, and NESDIS imagery offers CONUS or full disk where no sector
-exists. The search box accepts places in the US, Canada, Mexico and Brazil.
+exists. The search box accepts places in the US, Canada, Mexico and Brazil, and resolves
+a Brazilian CEP (eight digits, e.g. `01310-100`) through BrasilAPI, which
+Nominatim often cannot. Satellite fire detections come from NASA GIBS and work
+worldwide, so the fire section has data outside the US where the NWS indices do
+not exist. NOAA's air-quality map layers cover North America only and are
+hidden elsewhere rather than drawn blank.
 
 Not every forecast office publishes every layer. Views say so explicitly when a
 layer (for example Lightning Activity Level or the fire danger indices) is

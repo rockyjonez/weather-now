@@ -62,7 +62,7 @@ footer a{color:var(--accent)}
 <header data-container="Header">
   <div class="eyebrow">Weather Now · reference</div>
   <h1>Where the weather dashboard gets its data</h1>
-  <p class="standfirst">Every source is a free public service. None of them needs an API key, a licence or an account, so the whole dashboard can be rebuilt or forked without asking anyone for access.</p>
+  <p class="standfirst">Every source is a free public service. None of them needs an API key, a licence or an account, so the whole dashboard can be rebuilt or forked without asking anyone for access. It works for any address in the United States, Canada, Mexico or Brazil.</p>
   <div class="meta">
     Dashboard: <a href="https://weather-now.exe.xyz">weather-now.exe.xyz</a> ·
     Source: <a href="https://github.com/rockyjonez/weather-now">github.com/rockyjonez/weather-now</a> ·
@@ -71,10 +71,10 @@ footer a{color:var(--accent)}
 </header>
 
 <div class="facts" data-container="Summary numbers">
-  <div class="fact"><div class="v">17</div><div class="k">data providers</div></div>
+  <div class="fact"><div class="v">19</div><div class="k">data providers</div></div>
   <div class="fact"><div class="v">0</div><div class="k">API keys needed</div></div>
   <div class="fact"><div class="v">3</div><div class="k">cached on our server</div></div>
-  <div class="fact"><div class="v">4</div><div class="k">countries covered</div></div>
+  <div class="fact"><div class="v">4</div><div class="k">countries, any postcode</div></div>
 </div>
 
 <div class="callout" data-container="How to read this">
@@ -82,7 +82,12 @@ footer a{color:var(--accent)}
   <p>The <span class="tag open">direct</span> and <span class="tag cached">cached</span> tags in the last column show which is which.</p>
 </div>
 
-<h2>Forecasts and current conditions <span class="n">4 sources</span></h2>
+<div class="callout" data-container="Brazil">
+  <p><strong>Brazil, Canada and Mexico.</strong> Type a CEP such as <code>01310-100</code>, a Canadian or Mexican postcode, a city name or a coordinate pair. Everything on the page then works from that point: forecast, hourly rows, 10-day outlook, health scores, radar, satellite, fire detections, sky and launches.</p>
+  <p>Two things are United States only, and the page says so where it matters. The National Weather Service forecast is replaced by Open-Meteo, which is a model rather than a meteorologist's forecast. Official storm warnings are linked to the national agency rather than read, because none of the three publishes a feed open to us. INMET's own site was unreachable from two separate networks when this was checked.</p>
+</div>
+
+<h2>Forecasts and current conditions <span class="n">5 sources</span></h2>
 <p class="lede">The National Weather Service is the primary source inside the United States. Open-Meteo covers everywhere else and fills the gaps the weather service leaves.</p>
 <div class="tablewrap"><table>
   <thead><tr><th>Source</th><th>What it provides</th><th>Where it appears</th><th>How we call it</th></tr></thead>
@@ -103,12 +108,16 @@ footer a{color:var(--accent)}
         <td>Turns a typed place name or postcode into coordinates</td>
         <td>The search box</td>
         <td><span class="tag open">direct</span></td></tr>
+    <tr><td class="src"><a href="https://brasilapi.com.br/docs">BrasilAPI</a><span class="host">brasilapi.com.br</span></td>
+        <td>Turns a Brazilian CEP into coordinates, district, city, state and time zone</td>
+        <td>The search box, whenever eight digits are typed</td>
+        <td><span class="tag open">direct</span></td></tr>
   </tbody>
 </table></div>
-<p class="note">Outside the United States the dashboard links to the national warning service rather than reading it: Environment Canada, Mexico's Servicio Meteorológico Nacional, and Brazil's INMET. None of the three publishes a warning feed we can read without an agreement.</p>
+<p class="note">Outside the United States the dashboard links to the national warning service rather than reading it: Environment Canada, Mexico's Servicio Meteorológico Nacional, and Brazil's INMET. None of the three publishes a warning feed open to us, and INMET's servers did not answer at all when this was checked on 1 October 2026.</p>
 
-<h2>Maps, radar and satellite imagery <span class="n">6 sources</span></h2>
-<p class="lede">NOAA retired its forecast map layers in September 2026. The layers listed here are the ones confirmed to be publishing as of 1 October 2026.</p>
+<h2>Maps, radar and satellite imagery <span class="n">7 sources</span></h2>
+<p class="lede">NOAA retired its forecast map layers in September 2026. The layers listed here are the ones confirmed to be publishing as of 1 October 2026. Radar, satellite and fire detections work worldwide; the NOAA air-quality layers cover North America only and are hidden elsewhere rather than shown blank.</p>
 <div class="tablewrap"><table>
   <thead><tr><th>Source</th><th>What it provides</th><th>Where it appears</th><th>How we call it</th></tr></thead>
   <tbody>
@@ -131,6 +140,10 @@ footer a{color:var(--accent)}
     <tr><td class="src"><a href="https://eccc-msc.github.io/open-data/msc-geomet/readme_en/">Environment Canada GeoMet</a><span class="host">geo.weather.gc.ca</span></td>
         <td>Canadian rain and snow radar at 1 km resolution</td>
         <td>Map tab, when the location is in Canada</td>
+        <td><span class="tag open">direct</span></td></tr>
+    <tr><td class="src"><a href="https://nasa-gibs.github.io/gibs-api-docs/">NASA GIBS</a><span class="host">gibs.earthdata.nasa.gov</span></td>
+        <td>Satellite fire detections worldwide from the VIIRS instruments, refreshed daily</td>
+        <td>Map tab, and the fire section outside the United States</td>
         <td><span class="tag open">direct</span></td></tr>
     <tr><td class="src"><a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a><span class="host">tile.openstreetmap.org</span></td>
         <td>The base map under every weather layer</td>
@@ -203,6 +216,9 @@ footer a{color:var(--accent)}
     <tr><td><strong>Rate limits</strong></td>
         <td>Launch Library allows an unregistered caller about 15 requests an hour. CelesTrak and NASA throttle too.</td>
         <td>Those three are fetched once by our server on a schedule. Viewers read our copy, so the number of visitors does not affect the provider.</td></tr>
+    <tr><td><strong>A national agency is closed to us</strong></td>
+        <td>Brazil, Canada and Mexico publish storm warnings, but not in a form we may read. INMET was unreachable entirely on 1 October 2026.</td>
+        <td>The page links to each agency's own warning page instead of pretending to have the data. Everything else on the page works from coordinates, so it is unaffected.</td></tr>
     <tr><td><strong>A provider is briefly unreachable</strong></td>
         <td>A section would be blank.</td>
         <td>Each cached source has a chain of fallbacks, ending with the last good copy held in the browser. A tab that genuinely has no data says so rather than showing zeros.</td></tr>

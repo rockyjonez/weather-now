@@ -269,7 +269,7 @@ footer{margin-top:28px;font-size:13px;color:var(--muted);line-height:1.6}
     </div>
     <div class="controls">
       <form id="searchForm" style="display:flex;gap:6px">
-        <input type="text" id="q" placeholder="City, postal code, or lat,lon · US, Canada, Mexico, Brazil" aria-label="Search location">
+        <input type="text" id="q" placeholder="City, ZIP, CEP, or lat,lon · US, Canada, Mexico, Brazil" aria-label="Search location">
         <button class="btn" type="submit">Go</button>
       </form>
       <button class="btn" id="geoBtn" title="Use my location">📍 My location</button>
@@ -295,7 +295,7 @@ footer{margin-top:28px;font-size:13px;color:var(--muted);line-height:1.6}
 <script>
 'use strict';
 const API = 'https://api.weather.gov';
-const BUILD = '2026-10-01.2';
+const BUILD = '2026-10-01.3';
 const HOUR = 3600e3;
 const $ = s => document.querySelector(s);
 function el(tag, attrs = {}, ...kids) {
@@ -867,6 +867,7 @@ function viewFire(d) {
     d.layers.mixingHeight || d.layers.transportWindSpeed ? section('Smoke dispersion', el('p', { class: 'note' }, 'Mixing height and transport wind govern how smoke lofts and moves.'), el('div', { class: 'grid2' },
       d.layers.mixingHeight ? chart({ rows: R, tz, yFmt: v => `${Math.round(v).toLocaleString()}`, yMin: 0, series: [{ name: `Mixing height (${US() ? 'ft' : 'm'})`, color: C('violet'), kind: 'area', values: R.map(r => valAlt(r.mixingHeight)) }], height: 200 }) : null,
       d.layers.transportWindSpeed ? chart({ rows: R, tz, yFmt: v => `${Math.round(v)}`, yMin: 0, arrows: r => r.transportWindDirection, series: [{ name: `Transport wind (${US() ? 'mph' : 'km/h'})`, color: C('blue'), values: R.map(r => valSpd(r.transportWindSpeed)) }], height: 200 }) : null)) : null,
+    d.intl ? section('Active fires near here', el('p', { class: 'lede' }, `${d.intl.name === 'this area' ? 'This area' : d.intl.name} has no public red-flag index, so the dashboard shows satellite fire detections instead. Open the Map tab and choose Active fires to see the last 24 hours of VIIRS heat signatures.`), el('p', { class: 'note' }, 'Source: NASA FIRMS, served through NASA Worldview. A detection is a hot pixel, which can be a wildfire, agricultural burning or industry.')) : null,
     section('Fire weather alerts', alertCards(f.alerts, 'No red flag warnings or fire weather watches.'), hazardList(d, ['FW', 'SM']) ? el('div', { style: 'margin-top:10px' }, el('h3', {}, 'Gridded hazards'), hazardList(d, ['FW', 'SM'])) : null)
   ];
 }
@@ -1573,7 +1574,7 @@ function wmoEmoji(c, day) { if (c === 0 || c === 1) return day ? (c === 0 ? '☀
 function intlRegion(lat, lon) {
   if (lon >= -141 && lon <= -52 && lat >= 41.6 && lat <= 84) return { name: 'Canada', alerts: 'https://weather.gc.ca/warnings/index_e.html', agency: 'Environment Canada' };
   if (lat >= 14 && lat <= 33 && lon >= -118.5 && lon <= -86.5) return { name: 'Mexico', alerts: 'https://smn.conagua.gob.mx/es/avisos', agency: 'Servicio Meteorológico Nacional (CONAGUA)' };
-  if (lat >= -34 && lat <= 6 && lon >= -74 && lon <= -34) return { name: 'Brazil', alerts: 'https://alertas2.inmet.gov.br/', agency: 'INMET' };
+  if (lat >= -34 && lat <= 6 && lon >= -74 && lon <= -34) return { name: 'Brazil', alerts: 'https://portal.inmet.gov.br/avisos/', agency: 'INMET (Instituto Nacional de Meteorologia)' };
   return { name: 'this area', alerts: null, agency: 'the national weather service' };
 }
 async function loadIntl(lat, lon) {
@@ -1616,10 +1617,18 @@ const MAP_LAYERS_INTL = [
   { key: 'ecsnow', name: 'Snow radar, Environment Canada', src: 'geomet', layer: 'RADAR_1KM_RSNO', kind: 'obs', loop: 120, about: 'Environment Canada 1 km snow-rate radar mosaic.', only: 'Canada' },
   { key: 'lightning', name: 'Lightning', ws: 'lightning_detection', layer: 'lightning_detection:ldn_lightning_strike_density', kind: 'obs', loop: 120, about: 'Lightning strike density in 15-minute bins (Vaisala network via NOAA nowCOAST). The loop covers the last two hours.' },
   { key: 'satellite', name: 'Clouds (satellite)', ws: 'satellite', layer: 'satellite:global_longwave_imagery_mosaic', kind: 'obs', loop: 60, about: 'Global infrared satellite mosaic: brighter means colder, higher cloud tops. Works at night.' },
-  { key: 'pm25', unit: 'µg/m³', name: 'Fine particles (PM2.5)', src: 'arcgis', svc: 'air_quality/ndgd_apm25_hr01', server: 'ImageServer', kind: 'fc', about: 'NOAA air-quality forecast for fine particles. Covers North America; blank elsewhere.' },
-  { key: 'smoke', unit: 'µg/m³', name: 'Wildfire smoke', src: 'arcgis', svc: 'air_quality/ndgd_smoke_sfc_1hr_avg_time', server: 'ImageServer', kind: 'fc', about: 'NOAA surface smoke forecast. Covers North America; blank elsewhere.' }
+  { key: 'fires', name: 'Active fires', src: 'gibs', layer: 'VIIRS_NOAA20_Thermal_Anomalies_375m_All,VIIRS_SNPP_Thermal_Anomalies_375m_All', kind: 'static', about: 'Heat signatures picked up by the VIIRS instruments over the last day, worldwide. Each mark is a satellite fire detection, not a confirmed fire.' },
+  { key: 'pm25', unit: 'µg/m³', name: 'Fine particles (PM2.5)', src: 'arcgis', svc: 'air_quality/ndgd_apm25_hr01', server: 'ImageServer', kind: 'fc', northAmerica: true, about: 'NOAA air-quality forecast for fine particles.' },
+  { key: 'smoke', unit: 'µg/m³', name: 'Wildfire smoke', src: 'arcgis', svc: 'air_quality/ndgd_smoke_sfc_1hr_avg_time', server: 'ImageServer', kind: 'fc', northAmerica: true, about: 'NOAA surface smoke forecast.' }
 ];
-const activeMapLayers = () => state.data && state.data.intl ? MAP_LAYERS_INTL.filter(l => !l.only || l.only === state.data.intl.name) : MAP_LAYERS;
+// NOAA's air-quality model stops at the North American edge, so those layers are hidden
+// rather than shown blank once the location is outside it.
+const inNorthAmerica = (lat, lon) => lat >= 14 && lat <= 72 && lon >= -170 && lon <= -50;
+const activeMapLayers = () => {
+  if (!(state.data && state.data.intl)) return MAP_LAYERS;
+  const na = inNorthAmerica(state.lat, state.lon);
+  return MAP_LAYERS_INTL.filter(l => (!l.only || l.only === state.data.intl.name) && (!l.northAmerica || na));
+};
 
 // ---------- Daily learning: Sefaria calendars + Hebcal (Hebrew date, parasha, candle lighting, holidays) ----------
 const inIsrael = (lat, lon) => lat >= 29.4 && lat <= 33.4 && lon >= 34.2 && lon <= 35.95;
@@ -1689,6 +1698,7 @@ const MAP_LAYERS = [
   { key: 'dust', unit: 'µg/m³', name: 'Dust', src: 'arcgis', svc: 'air_quality/ndgd_dust_sfc_time', server: 'ImageServer', kind: 'fc', about: 'NOAA surface dust forecast. Mostly blank outside the desert Southwest.' },
   { key: 'snowdepth', unit: 'in', name: 'Snow on the ground', src: 'arcgis', svc: 'snow/NOHRSC_Snow_Analysis', server: 'MapServer', arcLayers: '0', kind: 'static', about: 'National snow analysis: how deep the snow is right now. Blank when there is none.' },
   { key: 'ffg', unit: 'in', name: 'Flash flood guidance', src: 'arcgis', svc: 'precip/rfc_gridded_ffg', server: 'MapServer', arcLayers: '3', kind: 'static', about: 'How much rain in a short time would start flash flooding here. Low values mean saturated ground.' },
+  { key: 'fires', name: 'Active fires', src: 'gibs', layer: 'VIIRS_NOAA20_Thermal_Anomalies_375m_All,VIIRS_SNPP_Thermal_Anomalies_375m_All', kind: 'static', about: 'Heat signatures picked up by the VIIRS instruments over the last day, worldwide. Each mark is a satellite fire detection, not a confirmed fire.' },
   { key: 'alerts', name: 'Alerts', ws: 'alerts', layer: 'alerts:watches_warnings_advisories', kind: 'static', about: 'Current NWS watches, warnings and advisories. Click a shaded area for its name.' }
 ];
 const ALERTS_LAYER = 'alerts:watches_warnings_advisories';
@@ -1703,6 +1713,7 @@ function ensureLeaflet() {
   });
   return leafletP;
 }
+const GIBS = 'https://gibs.earthdata.nasa.gov/wms/epsg3857/best/wms.cgi';
 function arcgisTileLayer(def, opts) {
   const base = `${NWSGIS}/${def.svc}/${def.server}/${def.server === 'ImageServer' ? 'exportImage' : 'export'}`;
   const Cls = L.TileLayer.extend({ getTileUrl(c) {
@@ -1716,6 +1727,7 @@ function arcgisTileLayer(def, opts) {
   return new Cls('', { ...opts, maxNativeZoom: 12, crossOrigin: true });
 }
 async function layerTimes(def, name) {
+  if (def.src === 'gibs') return [];
   if (def.src === 'arcgis') {
     const j = await fetch(`${NWSGIS}/${def.svc}/${def.server}?f=json`).then(r => r.json()).catch(() => null);
     const te = j && j.timeInfo && j.timeInfo.timeExtent;
@@ -1796,11 +1808,12 @@ function buildMap(d, def, ui) {
   const wmsUrl = def.src === 'geomet' ? GEOMET : `${NOWCOAST}/${def.ws}/wms`;
   map.createPane('wx'); map.getPane('wx').style.zIndex = 350;
   map.createPane('al'); map.getPane('al').style.zIndex = 360;
-  const wmsBase = { format: 'image/png', transparent: true, version: '1.3.0', attribution: def.src === 'geomet' ? 'Environment Canada GeoMet' : def.src === 'rv' ? 'RainViewer' : def.src === 'arcgis' ? 'NOAA/NWS' : 'NOAA nowCOAST', pane: 'wx' };
+  const wmsBase = { format: 'image/png', transparent: true, version: '1.3.0', attribution: def.src === 'geomet' ? 'Environment Canada GeoMet' : def.src === 'rv' ? 'RainViewer' : def.src === 'arcgis' ? 'NOAA/NWS' : def.src === 'gibs' ? 'NASA GIBS' : 'NOAA nowCOAST', pane: 'wx' };
   if (!d.intl && mapState.showAlerts && def.key !== 'alerts') L.tileLayer.wms(`${NOWCOAST}/alerts/wms`, { ...wmsBase, pane: 'al', layers: ALERTS_LAYER, opacity: 0.55 }).addTo(map);
   L.circleMarker([state.lat, state.lon], { radius: 7, color: '#fff', weight: 2, fillColor: '#2a78d6', fillOpacity: 1 }).addTo(map).bindTooltip(state.label || 'Selected point');
   ui.legend.innerHTML = '';
-  if (def.src === 'arcgis') ui.legend.append(el('img', { src: `${NWSGIS}/${def.svc}/${def.server}/legend?f=image`, alt: `${def.name} legend`, onerror: e => e.target.remove() }));
+  if (def.src === 'gibs') ui.legend.append(el('p', { class: 'note' }, 'Each mark is one satellite fire detection from the last day, from the VIIRS instruments on NOAA-20 and Suomi NPP. Detections include agricultural burning and industrial heat, so not every mark is a wildfire.'));
+  else if (def.src === 'arcgis') ui.legend.append(el('img', { src: `${NWSGIS}/${def.svc}/${def.server}/legend?f=image`, alt: `${def.name} legend`, onerror: e => e.target.remove() }));
   else if (def.src === 'rv') ui.legend.append(el('p', { class: 'note' }, 'Colour runs from light blue (drizzle) through green and yellow to red and purple (heavy rain or hail); snow shows in blue-grey.'));
   else if (def.src === 'geomet') ui.legend.append(el('img', { src: `${GEOMET}?service=WMS&version=1.3.0&request=GetLegendGraphic&layer=${name}&format=image/png&sld_version=1.1.0`, alt: `${def.name} legend` }));
   else if (def.key !== 'alerts') ui.legend.append(el('img', { src: `${NOWCOAST}/${def.ws}/wms?service=WMS&version=1.3.0&request=GetLegendGraphic&layer=${encodeURIComponent(name)}&format=image/png&legend_options=fontName:Helvetica;fontSize:11;dpi:96;forceLabels:on`, alt: `${def.name} legend` }));
@@ -1810,7 +1823,8 @@ function buildMap(d, def, ui) {
   const ensureFrame = i => {
     const t = frames[i], key = frameKey(t);
     if (!mapState.frameLayers[key]) {
-      if (def.src === 'arcgis') mapState.frameLayers[key] = arcgisTileLayer(def, { opacity: 0, pane: 'wx', attribution: 'NOAA/NWS', wxTime: t }).addTo(map);
+      if (def.src === 'gibs') mapState.frameLayers[key] = L.tileLayer.wms(GIBS, { ...wmsBase, layers: def.layer, opacity: 0, attribution: 'NASA GIBS / FIRMS', maxNativeZoom: 9 }).addTo(map);
+      else if (def.src === 'arcgis') mapState.frameLayers[key] = arcgisTileLayer(def, { opacity: 0, pane: 'wx', attribution: 'NOAA/NWS', wxTime: t }).addTo(map);
       else if (def.src === 'rv' && mapState.rv && mapState.rv.paths[t]) mapState.frameLayers[key] = L.tileLayer(`${mapState.rv.host}${mapState.rv.paths[t]}/256/{z}/{x}/{y}/2/1_1.png`, { opacity: 0, pane: 'wx', attribution: 'RainViewer', maxNativeZoom: 7 }).addTo(map);
       else { const opts = { ...wmsBase, layers: name, opacity: 0 }; if (t != null) opts.time = new Date(t).toISOString(); mapState.frameLayers[key] = L.tileLayer.wms(wmsUrl, opts).addTo(map); }
     }
@@ -1865,9 +1879,23 @@ function vtecWindow(v, tz) { const m = /(\d{6}T\d{4}Z)-(\d{6}T\d{4}Z)/.exec(v ||
 function stopPlay() { mapState.playing = false; if (mapState.timer) clearInterval(mapState.timer); mapState.timer = null; const b = document.querySelector('.timectl .btn'); if (b) b.textContent = '▶'; }
 
 // ---------- location handling ----------
+// A Brazilian CEP is eight digits, usually written 01310-100. BrasilAPI returns coordinates for it;
+// Nominatim often cannot resolve one, which is why this runs first.
+async function cepLookup(cep) {
+  const r = await fetch(`https://brasilapi.com.br/api/cep/v2/${cep}`);
+  if (!r.ok) throw new Error(`CEP ${cep.slice(0, 5)}-${cep.slice(5)} was not found.`);
+  const j = await r.json();
+  const c = j.location && j.location.coordinates;
+  const lat = c && parseFloat(c.latitude), lon = c && parseFloat(c.longitude);
+  const where = [j.neighborhood, j.city, j.state].filter(Boolean).join(', ');
+  if (!isFinite(lat) || !isFinite(lon)) throw new Error(`CEP ${cep.slice(0, 5)}-${cep.slice(5)} is in ${j.city || 'Brazil'}, but has no coordinates on file. Try the city name.`);
+  return { lat, lon, label: where || j.city };
+}
 async function geocode(q) {
   const m = /^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/.exec(q);
   if (m) return { lat: +m[1], lon: +m[2], label: null };
+  const cep = q.replace(/[\s.-]/g, '');
+  if (/^\d{8}$/.test(cep)) return cepLookup(cep);
   const r = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=us,ca,mx,br,pr,vi,gu,as,mp&q=${encodeURIComponent(q)}`, { headers: { Accept: 'application/json' } });
   const j = await r.json();
   if (!j.length) throw new Error('No matching place found in the US, Canada, Mexico or Brazil.');
