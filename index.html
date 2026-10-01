@@ -72,6 +72,7 @@ header.top{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:flex-end;justif
 .btn{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:7px 11px;font-size:14px;line-height:1.2;color:var(--text)}
 .btn:hover{border-color:var(--accent);color:var(--accent)}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+#langPick select{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:7px 8px;font-size:13px;color:var(--text)}
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--surface)}
 .seg button{border:0;background:transparent;padding:7px 10px;font-size:14px;color:var(--text2)}
 .seg button[aria-pressed=true]{background:var(--accent);color:var(--accent-ink)}
@@ -276,6 +277,7 @@ footer{margin-top:28px;font-size:13px;color:var(--muted);line-height:1.6}
       <div class="seg" role="group" aria-label="Units">
         <button id="uUS" aria-pressed="true">°F mph</button><button id="uSI" aria-pressed="false">°C km/h</button>
       </div>
+      <span id="langPick"></span>
       <button class="btn" id="themeBtn" title="Vortex / daylight">◐</button>
       <button class="btn" id="refreshBtn" title="Rematerialise (refresh)">↻</button>
     </div>
@@ -295,7 +297,7 @@ footer{margin-top:28px;font-size:13px;color:var(--muted);line-height:1.6}
 <script>
 'use strict';
 const API = 'https://api.weather.gov';
-const BUILD = '2026-10-01.5';
+const BUILD = '2026-10-01.7';
 const HOUR = 3600e3;
 const $ = s => document.querySelector(s);
 function el(tag, attrs = {}, ...kids) {
@@ -357,8 +359,8 @@ const dirName = d => d == null ? '–' : DIRS[Math.round(d / 22.5) % 16];
 
 // ---------- time ----------
 function fmtHour(t, tz) { return new Intl.DateTimeFormat('en-US', { hour: 'numeric', timeZone: tz }).format(new Date(t)).replace(' AM', 'a').replace(' PM', 'p'); }
-function fmtTime(t, tz) { return new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZone: tz }).format(new Date(t)); }
-function fmtDT(t, tz) { return new Intl.DateTimeFormat('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit', timeZone: tz }).format(new Date(t)); }
+function fmtTime(t, tz) { return new Intl.DateTimeFormat(activeLang(), { hour: 'numeric', minute: '2-digit', timeZone: tz }).format(new Date(t)); }
+function fmtDT(t, tz) { return new Intl.DateTimeFormat(activeLang(), { weekday: 'short', hour: 'numeric', minute: '2-digit', timeZone: tz }).format(new Date(t)); }
 
 // Sunrise / sunset (NOAA-style, adapted from the well-known suncalc formulas)
 const rad = Math.PI / 180, dayMs = 864e5, J1970 = 2440588, J2000 = 2451545, ecl = rad * 23.4397;
@@ -603,21 +605,181 @@ function chart({ rows, tz, series, yFmt, yMin, yMax, height = 250, arrows, ticks
 }
 const C = k => getComputedStyle(document.documentElement).getPropertyValue(`--s-${k}`).trim();
 
+// ---------- language follows the location ----------
+// The page is written in English. Rather than wrap every string at its call site, a pass over the
+// rendered tree swaps text nodes whose exact text is in the dictionary. Anything not translated
+// stays in English, which is the honest failure mode.
+const LANGS = { en: 'English', 'pt-BR': 'Português', es: 'Español', 'fr-CA': 'Français' };
+function langForPlace(lat, lon) {
+  if (lat >= -34 && lat <= 6 && lon >= -74 && lon <= -34) return 'pt-BR';                 // Brazil
+  if (lat >= 14 && lat <= 33 && lon >= -118.5 && lon <= -86.5) return 'es';               // Mexico
+  if (lat >= 17.8 && lat <= 18.6 && lon >= -67.3 && lon <= -65.2) return 'es';            // Puerto Rico
+  if (lat >= 44.9 && lat <= 62.6 && lon >= -79.8 && lon <= -57) return 'fr-CA';           // Québec
+  return 'en';
+}
+const langAuto = () => localStorage.getItem('wx.lang') || 'auto';
+function activeLang() {
+  const pick = langAuto();
+  if (pick !== 'auto') return pick;
+  return state.lat == null ? 'en' : langForPlace(state.lat, state.lon);
+}
+const DICT = {
+  'pt-BR': {
+    'The National Weather Service is not answering right now, so these numbers come from the Open-Meteo model. US alerts are unavailable until it returns.': 'O serviço meteorológico dos EUA não está respondendo, então estes números vêm do modelo Open-Meteo. Alertas dos EUA ficam indisponíveis até ele voltar.',
+    'active alerts': 'alertas ativos', 'active alert': 'alerta ativo', 'View alerts': 'Ver alertas',
+    'Drizzle': 'Garoa', 'Light drizzle': 'Garoa fraca', 'Rain': 'Chuva', 'Light rain': 'Chuva fraca',
+    'Heavy rain': 'Chuva forte', 'Overcast': 'Encoberto', 'Clear': 'Céu limpo', 'Mainly clear': 'Predominantemente limpo',
+    'Partly cloudy': 'Parcialmente nublado', 'Showers': 'Pancadas de chuva', 'Heavy showers': 'Pancadas fortes',
+    'Thunderstorms': 'Tempestades', 'Fog': 'Nevoeiro', 'Snow': 'Neve',
+    'Weather console': 'Console meteorológico', 'Go': 'Buscar', '📍 My location': '📍 Minha localização',
+    'Materialising…': 'Materializando…', 'Materialising… fetching the forecast': 'Materializando… buscando a previsão',
+    'City, ZIP, CEP, or lat,lon · US, Canada, Mexico, Brazil': 'Cidade, CEP, ou lat,lon · EUA, Canadá, México, Brasil',
+    'Overview': 'Visão geral', 'Map': 'Mapa', '10-day': '10 dias', 'Temperature': 'Temperatura', 'Rain': 'Chuva',
+    'Clouds & sky': 'Nuvens e céu', 'Wind': 'Vento', 'Storms & lightning': 'Tempestades e raios',
+    'Snow & ice': 'Neve e gelo', 'Fire weather': 'Risco de incêndio', 'Alerts': 'Alertas', 'Data table': 'Tabela de dados',
+    'Next 12 hours': 'Próximas 12 horas', 'Temperature and rain': 'Temperatura e chuva',
+    'Health & comfort': 'Saúde e conforto', 'Tonight’s sky': 'O céu esta noite',
+    'Satellites over Earth': 'Satélites sobre a Terra', 'Satellites over Earth now': 'Satélites sobre a Terra agora',
+    'Launches': 'Lançamentos', 'NESDIS imagery': 'Imagens NESDIS', 'NESDIS satellite imagery': 'Imagens de satélite NESDIS',
+    'Moon & Sun': 'Lua e Sol', 'Planets': 'Planetas', 'Events': 'Eventos', 'Full calendar': 'Calendário completo',
+    'Astronomy picture of the day': 'Imagem astronômica do dia', 'Daf Yomi & more': 'Daf Yomi e mais',
+    'Wind speed': 'Velocidade do vento', 'Wind gusts': 'Rajadas de vento', 'Wind direction': 'Direção do vento',
+    'Humidity': 'Umidade', 'Cloud cover': 'Nebulosidade', 'Rain chance': 'Chance de chuva', 'Pressure': 'Pressão',
+    'Visibility': 'Visibilidade', 'Thunder': 'Trovoadas', 'Heat risk': 'Risco de calor', 'Air quality': 'Qualidade do ar',
+    'UV now': 'UV agora', 'Pollen': 'Pólen', 'Dew point': 'Ponto de orvalho', 'Feels like': 'Sensação',
+    'Sunrise': 'Nascer do sol', 'Sunset': 'Pôr do sol', 'Moonrise': 'Nascer da lua', 'Moon': 'Lua',
+    'Daylight': 'Duração do dia', 'Low': 'Baixo', 'Moderate': 'Moderado', 'Elevated': 'Elevado', 'High': 'Alto',
+    'Very high': 'Muito alto', 'Migraine': 'Enxaqueca', 'Arthritis': 'Artrite', 'Sinus': 'Sinusite',
+    'Allergy (pollen)': 'Alergia (pólen)', 'Asthma & air': 'Asma e ar', 'Cold & flu': 'Resfriado e gripe',
+    'UV & sunburn': 'UV e queimadura solar', 'Outdoor discomfort': 'Desconforto ao ar livre',
+    'Radar': 'Radar', 'Lightning': 'Raios', 'Clouds (satellite)': 'Nuvens (satélite)', 'Clouds (infrared)': 'Nuvens (infravermelho)',
+    'Clouds (visible)': 'Nuvens (visível)', 'Water vapour': 'Vapor de água', 'Active fires': 'Focos de incêndio',
+    'Fine particles (PM2.5)': 'Partículas finas (PM2,5)', 'Ozone': 'Ozônio', 'Wildfire smoke': 'Fumaça de incêndios',
+    'Dust': 'Poeira', 'Snow on the ground': 'Neve no solo', 'Opacity': 'Opacidade', 'Alert outlines': 'Contornos de alertas',
+    'Animate (loop)': 'Animar', 'Today': 'Hoje', 'Tomorrow': 'Amanhã', 'After that': 'Depois disso',
+    'Day': 'Dia', 'When': 'Quando', 'Mission': 'Missão', 'Rocket': 'Foguete', 'From': 'De', 'Countdown': 'Contagem',
+    'Watch': 'Assistir', 'Details': 'Detalhes', 'Mission details': 'Detalhes da missão', 'Full schedule': 'Agenda completa',
+    'Explanation': 'Explicação', 'Details and instructions': 'Detalhes e instruções', 'About this mission': 'Sobre esta missão',
+    'Download CSV': 'Baixar CSV', 'Hourly data': 'Dados por hora', 'Try again': 'Tentar novamente',
+    'Next visible pass': 'Próxima passagem visível', 'Evening planets': 'Planetas à noite',
+    'Morning planets': 'Planetas de manhã', 'Events today': 'Eventos hoje', 'Learning today': 'Estudo de hoje',
+    'Hebrew date & candles': 'Data hebraica e velas', 'Next two weeks': 'Próximas duas semanas',
+    'Hebrew date': 'Data hebraica', 'Candle lighting': 'Acendimento das velas', 'This week': 'Esta semana',
+    'Barometric pressure, past 48 h & next 48 h': 'Pressão barométrica, 48 h passadas e 48 h seguintes',
+    '7-day outlook': 'Previsão de 7 dias', '10-day forecast': 'Previsão de 10 dias',
+    'Highs and lows': 'Máximas e mínimas', 'Precipitation': 'Precipitação', 'Summary': 'Resumo',
+    'Showing the backup forecast': 'Mostrando a previsão alternativa',
+    'Active alerts': 'Alertas ativos', 'By hour': 'Por hora', 'Snow': 'Neve', 'Ice': 'Gelo', 'Gust': 'Rajada',
+    'Sky': 'Céu', 'Precip': 'Precip.', 'Conditions': 'Condições', 'Temp': 'Temp.', 'Feels': 'Sensação',
+    'Hazards': 'Perigos', 'Time': 'Hora', 'Now': 'Agora'
+  },
+  es: {
+    'The National Weather Service is not answering right now, so these numbers come from the Open-Meteo model. US alerts are unavailable until it returns.': 'El servicio meteorológico de EE. UU. no responde, así que estos números provienen del modelo Open-Meteo. Las alertas de EE. UU. no están disponibles hasta que vuelva.',
+    'active alerts': 'alertas activas', 'active alert': 'alerta activa', 'View alerts': 'Ver alertas',
+    'Drizzle': 'Llovizna', 'Light drizzle': 'Llovizna ligera', 'Light rain': 'Lluvia ligera',
+    'Heavy rain': 'Lluvia fuerte', 'Overcast': 'Nublado', 'Clear': 'Despejado', 'Mainly clear': 'Mayormente despejado',
+    'Partly cloudy': 'Parcialmente nublado', 'Showers': 'Chubascos', 'Heavy showers': 'Chubascos fuertes',
+    'Thunderstorms': 'Tormentas', 'Fog': 'Niebla', 'Snow': 'Nieve',
+    'Weather console': 'Consola meteorológica', 'Go': 'Buscar', '📍 My location': '📍 Mi ubicación',
+    'Materialising…': 'Materializando…', 'Materialising… fetching the forecast': 'Materializando… obteniendo el pronóstico',
+    'City, ZIP, CEP, or lat,lon · US, Canada, Mexico, Brazil': 'Ciudad, código postal, o lat,lon · EE. UU., Canadá, México, Brasil',
+    'Overview': 'Resumen', 'Map': 'Mapa', '10-day': '10 días', 'Temperature': 'Temperatura', 'Rain': 'Lluvia',
+    'Clouds & sky': 'Nubes y cielo', 'Wind': 'Viento', 'Storms & lightning': 'Tormentas y rayos',
+    'Snow & ice': 'Nieve y hielo', 'Fire weather': 'Riesgo de incendio', 'Alerts': 'Alertas', 'Data table': 'Tabla de datos',
+    'Next 12 hours': 'Próximas 12 horas', 'Temperature and rain': 'Temperatura y lluvia',
+    'Health & comfort': 'Salud y confort', 'Tonight’s sky': 'El cielo esta noche',
+    'Satellites over Earth': 'Satélites sobre la Tierra', 'Satellites over Earth now': 'Satélites sobre la Tierra ahora',
+    'Launches': 'Lanzamientos', 'NESDIS imagery': 'Imágenes NESDIS', 'NESDIS satellite imagery': 'Imágenes de satélite NESDIS',
+    'Moon & Sun': 'Luna y Sol', 'Planets': 'Planetas', 'Events': 'Eventos', 'Full calendar': 'Calendario completo',
+    'Astronomy picture of the day': 'Imagen astronómica del día', 'Daf Yomi & more': 'Daf Yomi y más',
+    'Wind speed': 'Velocidad del viento', 'Wind gusts': 'Ráfagas', 'Wind direction': 'Dirección del viento',
+    'Humidity': 'Humedad', 'Cloud cover': 'Nubosidad', 'Rain chance': 'Probabilidad de lluvia', 'Pressure': 'Presión',
+    'Visibility': 'Visibilidad', 'Thunder': 'Tormenta eléctrica', 'Heat risk': 'Riesgo de calor', 'Air quality': 'Calidad del aire',
+    'UV now': 'UV ahora', 'Pollen': 'Polen', 'Dew point': 'Punto de rocío', 'Feels like': 'Sensación',
+    'Sunrise': 'Amanecer', 'Sunset': 'Atardecer', 'Moonrise': 'Salida de la luna', 'Moon': 'Luna',
+    'Daylight': 'Horas de luz', 'Low': 'Bajo', 'Moderate': 'Moderado', 'Elevated': 'Elevado', 'High': 'Alto',
+    'Very high': 'Muy alto', 'Migraine': 'Migraña', 'Arthritis': 'Artritis', 'Sinus': 'Sinusitis',
+    'Allergy (pollen)': 'Alergia (polen)', 'Asthma & air': 'Asma y aire', 'Cold & flu': 'Resfriado y gripe',
+    'UV & sunburn': 'UV y quemaduras', 'Outdoor discomfort': 'Incomodidad al aire libre',
+    'Radar': 'Radar', 'Lightning': 'Rayos', 'Clouds (satellite)': 'Nubes (satélite)', 'Clouds (infrared)': 'Nubes (infrarrojo)',
+    'Clouds (visible)': 'Nubes (visible)', 'Water vapour': 'Vapor de agua', 'Active fires': 'Incendios activos',
+    'Fine particles (PM2.5)': 'Partículas finas (PM2,5)', 'Ozone': 'Ozono', 'Wildfire smoke': 'Humo de incendios',
+    'Dust': 'Polvo', 'Snow on the ground': 'Nieve en el suelo', 'Opacity': 'Opacidad', 'Alert outlines': 'Contornos de alertas',
+    'Animate (loop)': 'Animar', 'Today': 'Hoy', 'Tomorrow': 'Mañana', 'After that': 'Después',
+    'Day': 'Día', 'When': 'Cuándo', 'Mission': 'Misión', 'Rocket': 'Cohete', 'From': 'Desde', 'Countdown': 'Cuenta atrás',
+    'Watch': 'Ver', 'Details': 'Detalles', 'Mission details': 'Detalles de la misión', 'Full schedule': 'Calendario completo',
+    'Explanation': 'Explicación', 'Details and instructions': 'Detalles e instrucciones', 'About this mission': 'Sobre esta misión',
+    'Download CSV': 'Descargar CSV', 'Hourly data': 'Datos por hora', 'Try again': 'Reintentar',
+    'Next visible pass': 'Próximo paso visible', 'Evening planets': 'Planetas al anochecer',
+    'Morning planets': 'Planetas al amanecer', 'Events today': 'Eventos de hoy', 'Learning today': 'Estudio de hoy',
+    'Hebrew date & candles': 'Fecha hebrea y velas', 'Next two weeks': 'Próximas dos semanas',
+    'Hebrew date': 'Fecha hebrea', 'Candle lighting': 'Encendido de velas', 'This week': 'Esta semana',
+    'Barometric pressure, past 48 h & next 48 h': 'Presión barométrica, 48 h pasadas y 48 h siguientes',
+    '7-day outlook': 'Pronóstico de 7 días', '10-day forecast': 'Pronóstico de 10 días',
+    'Highs and lows': 'Máximas y mínimas', 'Precipitation': 'Precipitación', 'Summary': 'Resumen',
+    'Showing the backup forecast': 'Mostrando el pronóstico alternativo',
+    'Active alerts': 'Alertas activas', 'By hour': 'Por hora', 'Snow': 'Nieve', 'Ice': 'Hielo', 'Gust': 'Ráfaga',
+    'Sky': 'Cielo', 'Precip': 'Precip.', 'Conditions': 'Condiciones', 'Temp': 'Temp.', 'Feels': 'Sensación',
+    'Hazards': 'Peligros', 'Time': 'Hora', 'Now': 'Ahora'
+  },
+  'fr-CA': {
+    'Weather console': 'Console météo', 'Go': 'Aller', '📍 My location': '📍 Ma position',
+    'Overview': 'Aperçu', 'Map': 'Carte', '10-day': '10 jours', 'Temperature': 'Température', 'Rain': 'Pluie',
+    'Clouds & sky': 'Nuages et ciel', 'Wind': 'Vent', 'Storms & lightning': 'Orages et foudre',
+    'Snow & ice': 'Neige et glace', 'Fire weather': 'Risque d’incendie', 'Alerts': 'Alertes', 'Data table': 'Tableau',
+    'Next 12 hours': 'Les 12 prochaines heures', 'Temperature and rain': 'Température et pluie',
+    'Health & comfort': 'Santé et confort', 'Tonight’s sky': 'Le ciel ce soir', 'Launches': 'Lancements',
+    'Humidity': 'Humidité', 'Cloud cover': 'Nébulosité', 'Rain chance': 'Probabilité de pluie', 'Pressure': 'Pression',
+    'Visibility': 'Visibilité', 'Feels like': 'Ressenti', 'Sunrise': 'Lever du soleil', 'Sunset': 'Coucher du soleil',
+    'Today': 'Aujourd’hui', 'Tomorrow': 'Demain', 'Now': 'Maintenant', 'Try again': 'Réessayer',
+    'Astronomy picture of the day': 'Image astronomique du jour'
+  }
+};
+function translateTree(root, lang) {
+  const map = DICT[lang]; if (!map || !root) return;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const hits = [];
+  while (walker.nextNode()) {
+    const n = walker.currentNode, raw = n.nodeValue, t = raw.trim();
+    if (!t || !map[t]) continue;
+    hits.push([n, raw.replace(t, map[t])]);
+  }
+  hits.forEach(([n, v]) => { n.nodeValue = v; });
+  root.querySelectorAll('[placeholder]').forEach(e => { const v = map[e.getAttribute('placeholder')]; if (v) e.setAttribute('placeholder', v); });
+  root.querySelectorAll('[title]').forEach(e => { const v = map[e.getAttribute('title')]; if (v) e.setAttribute('title', v); });
+}
+function applyLanguage() {
+  const lang = activeLang();
+  document.documentElement.lang = lang;
+  if (lang === 'en') return;
+  ['#banner', '#now', '#tabs', '#view', '#apod', '#learn', '#foot'].forEach(sel => translateTree(document.querySelector(sel), lang));
+  const hdr = document.querySelector('header.top'); if (hdr) translateTree(hdr, lang);
+}
+function languagePicker() {
+  const cur = langAuto();
+  const sel = el('select', { class: 'btn', 'aria-label': 'Language', title: 'Language', onchange: e => { localStorage.setItem('wx.lang', e.target.value); render(); loadDailyLearning(state.data); } },
+    el('option', { value: 'auto', selected: cur === 'auto' || null }, '🌐 Auto'),
+    ...Object.entries(LANGS).map(([k, v]) => el('option', { value: k, selected: cur === k || null }, v)));
+  return sel;
+}
+
 // ---------- rendering ----------
 function render() {
   renderHeader();
   const d = state.data;
   $('#banner').innerHTML = ''; $('#now').innerHTML = ''; $('#view').innerHTML = ''; $('#tabs').innerHTML = '';
-  if (state.error) { $('#now').append(el('div', { class: 'err' }, state.error)); renderFooter(); return; }
-  if (!d) { $('#now').append(el('div', { class: 'skel' }, 'Materialising…')); return; }
+  if (state.error) { $('#now').append(el('div', { class: 'err' }, state.error)); renderFooter(); applyLanguage(); return; }
+  if (!d) { $('#now').append(el('div', { class: 'skel' }, 'Materialising…')); applyLanguage(); return; }
   renderBanner(d); renderNow(d); renderTabs(d);
   const fn = { overview: viewOverview, map: viewMap, tenday: viewTenDay, sky: viewSky, temperature: viewTemp, rain: viewRain, clouds: viewClouds, wind: viewWind, storms: viewStorms, snow: viewSnow, fire: viewFire, alerts: viewAlerts, table: viewTable }[state.view];
   try { $('#view').append(...[].concat(fn(d)).filter(Boolean)); }
   catch (e) { console.error(e); $('#view').append(el('div', { class: 'err' }, `This view failed to render (${e.message}). The other tabs still work; please report this with the build number in the footer.`)); }
   renderFooter(d);
+  applyLanguage();
 }
 function renderHeader() {
   const d = state.data, ll = $('#locLine');
+  const lp = $('#langPick'); if (lp && !lp.firstChild) lp.append(languagePicker());
   if (state.loading && !d) ll.textContent = 'Materialising… fetching the forecast';
   else if (d) {
     const rl = d.pts.relativeLocation && d.pts.relativeLocation.properties;
@@ -636,7 +798,7 @@ function renderBanner(d) {
   const counts = {}; d.alerts.forEach(a => counts[a.event] = (counts[a.event] || 0) + 1);
   const top = d.alerts[0];
   const b = el('div', { class: 'banner', 'data-container': 'Alert banner', style: `border-left-color:var(--sev-${(top.severity || 'unknown').toLowerCase()})` },
-    el('b', {}, `${d.alerts.length} active alert${d.alerts.length > 1 ? 's' : ''}`),
+    el('b', {}, String(d.alerts.length), ' ', el('span', {}, d.alerts.length > 1 ? 'active alerts' : 'active alert')),
     Object.entries(counts).map(([k, v]) => el('span', { class: 'chip' }, v > 1 ? `${k} ×${v}` : k)),
     el('button', { class: 'btn', onclick: () => setView('alerts') }, 'View alerts'));
   $('#banner').append(b);
@@ -941,9 +1103,9 @@ function buildDaily(nwsFc, om, tz) {
   return [...days.values()].filter(d => d.date >= today || d.nws).sort((a, b) => a.date.localeCompare(b.date)).slice(0, 10);
 }
 const dayDate = date => { const [y, m, d] = date.split('-').map(Number); return Date.UTC(y, m - 1, d, 12); };
-const dayName = (date, i) => i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : new Intl.DateTimeFormat('en-US', { weekday: 'long', timeZone: 'UTC' }).format(new Date(dayDate(date)));
-const dayShort = date => new Intl.DateTimeFormat('en-US', { weekday: 'short', timeZone: 'UTC' }).format(new Date(dayDate(date)));
-const dayMD = date => new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }).format(new Date(dayDate(date)));
+const dayName = (date, i) => { const L = activeLang(); const t = DICT[L] || {}; if (i === 0) return t['Today'] || 'Today'; if (i === 1) return t['Tomorrow'] || 'Tomorrow'; return new Intl.DateTimeFormat(L, { weekday: 'long', timeZone: 'UTC' }).format(new Date(dayDate(date))); };
+const dayShort = date => new Intl.DateTimeFormat(activeLang(), { weekday: 'short', timeZone: 'UTC' }).format(new Date(dayDate(date)));
+const dayMD = date => new Intl.DateTimeFormat(activeLang(), { month: 'short', day: 'numeric', timeZone: 'UTC' }).format(new Date(dayDate(date)));
 function viewTenDay(d) {
   const D = d.daily || [];
   if (!D.length) return [section('10-day forecast', el('p', { class: 'empty' }, 'No daily forecast is available for this point.'))];

@@ -76,6 +76,20 @@ A tab with no data for your location says so, rather than showing zeros.
 
 ---
 
+## Language
+
+The interface follows the location: Portuguese in Brazil, Spanish in Mexico and
+Puerto Rico, French in Québec, English elsewhere. Dates, weekday names and times
+use the matching locale. A picker in the header overrides it, and the choice is
+remembered.
+
+Translation works as a pass over the rendered page rather than wrapping every
+string at its call site, so anything not yet in the dictionary stays in English
+rather than breaking. Data from providers (INMET warning text, NASA captions)
+arrives in its own language and is shown as published.
+
+---
+
 ## On a phone
 
 The site installs as a web app. On Android Chrome open the live URL and choose
