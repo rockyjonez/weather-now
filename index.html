@@ -295,7 +295,7 @@ footer{margin-top:28px;font-size:13px;color:var(--muted);line-height:1.6}
 <script>
 'use strict';
 const API = 'https://api.weather.gov';
-const BUILD = '2026-10-01.3';
+const BUILD = '2026-10-01.4';
 const HOUR = 3600e3;
 const $ = s => document.querySelector(s);
 function el(tag, attrs = {}, ...kids) {
@@ -487,7 +487,9 @@ function assemble({ pts, grid, hourly, obs, alerts, lat, lon, dailyNws, om, omH,
 const SEVS = ['Extreme', 'Severe', 'Moderate', 'Minor', 'Unknown'];
 const sevRank = s => { const i = SEVS.indexOf(s); return i < 0 ? 9 : i; };
 const alertMatches = (a, re) => re.test(a.event + ' ' + (a.headline || ''));
-const RE = { storm: /tornado|thunderstorm|severe|lightning|hurricane|tropical|special weather/i, fire: /fire|red flag|smoke/i, snow: /winter|snow|ice|blizzard|freez|frost|cold|wind chill|sleet/i, rain: /flood|rain|hydrologic/i, wind: /wind|gale|storm warning|small craft/i, heat: /heat/i, clouds: /fog|smoke|air quality|dense/i };
+// Portuguese terms cover INMET's warning names: tempestade (storm), chuva (rain), vendaval (gale),
+// baixa umidade (low humidity, the fire-risk warning), geada (frost), onda de calor (heat wave).
+const RE = { storm: /tornado|thunderstorm|severe|lightning|hurricane|tropical|special weather|tempestade|raio/i, fire: /fire|red flag|smoke|baixa umidade|inc[êe]ndio|fuma[çc]a/i, snow: /winter|snow|ice|blizzard|freez|frost|cold|wind chill|sleet|geada|neve|declínio de temperatura|frio/i, rain: /flood|rain|hydrologic|chuva|alagamento|inunda[çc]/i, wind: /wind|gale|storm warning|small craft|vendaval|vento/i, heat: /heat|calor/i, clouds: /fog|smoke|air quality|dense|nevoeiro|neblina/i };
 
 // ---------- chart ----------
 function chart({ rows, tz, series, yFmt, yMin, yMax, height = 250, arrows, ticks = 4, integer = false, ariaLabel, xLabel, tipLabel, dots = true }) {
@@ -696,7 +698,7 @@ function wordsRow(d, get, label) {
   return items.length ? el('div', {}, el('h3', {}, label), el('div', { class: 'words' }, items)) : el('p', { class: 'empty' }, `No ${label.toLowerCase()} in the next 12 hours.`);
 }
 function alertCards(list, emptyText) {
-  if (!list.length) return el('p', { class: 'empty' }, state.data && state.data.intl ? `Official warnings are not read outside the US yet; ${state.data.intl.agency} publishes them.` : emptyText || 'No active alerts.');
+  if (!list.length) return el('p', { class: 'empty' }, state.data && state.data.intl && state.data.intl.name !== 'Brazil' ? `Official warnings are not read for ${state.data.intl.name} yet; ${state.data.intl.agency} publishes them.` : emptyText || 'No active alerts.');
   return list.map(a => el('article', { class: `card alert ${a.severity}` },
     el('h4', {}, a.event),
     el('div', { class: 'meta' }, `${a.severity} · ${a.urgency} · ${a.certainty} · ${a.senderName}`, a.ends || a.expires ? ` · until ${new Date(a.ends || a.expires).toLocaleString()}` : ''),
@@ -874,7 +876,12 @@ function viewFire(d) {
 function viewAlerts(d) {
   const hz = hazardList(d);
   return [
-    d.intl ? section('Active alerts', el('p', { class: 'lede' }, `Official warnings for ${d.intl.name} come from ${d.intl.agency}. This page cannot read them yet.`), d.intl.alerts ? el('p', {}, el('a', { class: 'btn', href: d.intl.alerts, target: '_blank', rel: 'noopener' }, `Open ${d.intl.agency} warnings`)) : null) : section(`Active alerts (${d.alerts.length})`, el('p', { class: 'lede' }, 'All National Weather Service alerts whose area contains this point, most severe first.'), alertCards(d.alerts)),
+    d.intl ? section(`Active alerts (${d.alerts.length})`,
+      el('p', { class: 'lede' }, d.alerts.length
+        ? `${d.alerts.length} warning${d.alerts.length > 1 ? 's' : ''} from ${d.intl.agency} cover this point, most severe first.`
+        : `No warnings from ${d.intl.agency} cover this point right now.`),
+      d.alerts.length ? alertCards(d.alerts) : null,
+      d.intl.alerts ? el('p', { style: 'margin-top:12px' }, el('a', { class: 'btn', href: d.intl.alerts, target: '_blank', rel: 'noopener' }, `Open ${d.intl.agency}`)) : null) : section(`Active alerts (${d.alerts.length})`, el('p', { class: 'lede' }, 'All National Weather Service alerts whose area contains this point, most severe first.'), alertCards(d.alerts)),
     hz ? section('Gridded hazards, next 12 hours', el('p', { class: 'note' }, 'Hazard flags carried in the forecast grid itself; these can lead or lag the formal alerts above.'), hz) : null
   ];
 }
@@ -1568,6 +1575,59 @@ async function loadApod() {
     el('p', { class: 'note', style: 'margin-top:8px' }, 'NASA Astronomy Picture of the Day. ', el('a', { href: page, target: '_blank', rel: 'noopener' }, 'Open on science.nasa.gov'))]));
 }
 
+// ---------- INMET storm warnings for Brazil ----------
+// INMET publishes warnings as polygons. It rejects the default fetch user agent, so the VM holds a
+// slimmed copy; the browser falls back to calling INMET directly, which does allow cross-origin reads.
+const INMET_API = 'https://apiprevmet3.inmet.gov.br/avisos/ativos';
+const INMET_SEVERITY = { 'Grande Perigo': 'Extreme', 'Perigo': 'Severe', 'Perigo Potencial': 'Moderate' };
+function pointInRings(x, y, rings) {
+  let inside = false;
+  for (const ring of rings) {
+    for (let i = 0, n = ring.length; i < n; i++) {
+      const [x1, y1] = ring[i], [x2, y2] = ring[(i + 1) % n];
+      if ((y1 > y) !== (y2 > y) && x < (x2 - x1) * (y - y1) / (y2 - y1) + x1) inside = !inside;
+    }
+  }
+  return inside;
+}
+function inmetCovers(w, lat, lon) {
+  if (!w.poligono) return false;
+  let g; try { g = typeof w.poligono === 'string' ? JSON.parse(w.poligono) : w.poligono; } catch (e) { return false; }
+  const c = g && g.coordinates; if (!c) return false;
+  return g.type === 'MultiPolygon' ? c.some(poly => pointInRings(lon, lat, poly)) : pointInRings(lon, lat, c);
+}
+const brTime = v => { const t = Date.parse(String(v || '').replace(' ', 'T') + '-03:00'); return isNaN(t) ? null : new Date(t).toISOString(); };
+function inmetToAlert(w) {
+  const risks = [].concat(w.riscos || []).join(' ');
+  const steps = [].concat(w.instrucoes || []).map(x => String(x).trim()).filter(Boolean);
+  return {
+    event: w.descricao, severity: INMET_SEVERITY[w.severidade] || 'Unknown',
+    urgency: 'Expected', certainty: 'Likely', senderName: 'INMET',
+    headline: `${w.descricao} · ${w.severidade}${w.inicio ? ` · from ${w.inicio}` : ''}`,
+    description: risks, instruction: steps.join('\n'),
+    areaDesc: w.estados || '', ends: brTime(w.fim), expires: brTime(w.fim),
+    inmet: true
+  };
+}
+async function loadInmetAlerts(lat, lon) {
+  let rows = null;
+  for (const u of ['inmet-alerts.json', 'https://weather-now.exe.xyz/inmet-alerts.json']) {
+    try { const r = await fetch(u, { cache: 'no-cache' }); if (r.ok) { const j = await r.json(); if (Array.isArray(j)) { rows = j; break; } } } catch (e) { }
+  }
+  if (!rows) {
+    try {
+      const r = await fetch(INMET_API);
+      if (r.ok) { const j = await r.json(); rows = [...(j.hoje || []), ...(j.futuro || [])]; }
+    } catch (e) { }
+  }
+  if (!rows) return [];
+  const now = Date.now();
+  return rows.filter(w => inmetCovers(w, lat, lon))
+    .map(inmetToAlert)
+    .filter(a => !a.ends || Date.parse(a.ends) > now - HOUR)
+    .sort((a, b) => sevRank(a.severity) - sevRank(b.severity));
+}
+
 // ---------- outside NWS coverage: Open-Meteo fallback (Canada, Mexico, Brazil and the rest of the world) ----------
 const WMO_TEXT = c => (WMO[c] || ['Unknown'])[0];
 function wmoEmoji(c, day) { if (c === 0 || c === 1) return day ? (c === 0 ? '☀️' : '🌤️') : '🌙'; if (c === 2) return day ? '⛅' : '☁️'; return (WMO[c] || ['', '🌡️'])[1]; }
@@ -1585,9 +1645,11 @@ async function loadIntl(lat, lon) {
     fetch(`https://air-quality-api.open-meteo.com/v1/air-quality?${q}&hourly=us_aqi,pm2_5,pm10,ozone,dust,alder_pollen,birch_pollen,grass_pollen,mugwort_pollen,olive_pollen,ragweed_pollen&past_days=2&forecast_days=5&timeformat=unixtime&timezone=UTC`).then(r => r.ok ? r.json() : null).catch(() => null)
   ]);
   if (!om || !om.hourly) throw new Error('Open-Meteo returned no forecast for this point');
-  return assembleIntl({ om, daily, aq, lat, lon });
+  const region = intlRegion(lat, lon);
+  const alerts = region.name === 'Brazil' ? await loadInmetAlerts(lat, lon).catch(() => []) : [];
+  return assembleIntl({ om, daily, aq, lat, lon, alerts });
 }
-function assembleIntl({ om, daily, aq, lat, lon }) {
+function assembleIntl({ om, daily, aq, lat, lon, alerts }) {
   const tz = om.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
   const now = Date.now(), h0 = Math.floor(now / HOUR) * HOUR;
   const H = om.hourly, idx = {}; H.time.forEach((t, i) => idx[t * 1000] = i);
@@ -1608,7 +1670,7 @@ function assembleIntl({ om, daily, aq, lat, lon }) {
   const has = k => H[k] && H[k].some(v => v != null);
   const layers = { temperature: has('temperature_2m'), quantitativePrecipitation: has('precipitation'), snowfallAmount: has('snowfall'), snowLevel: has('freezing_level_height'), visibility: has('visibility'), probabilityOfThunder: has('cape'), relativeHumidity: true, skyCover: true, windSpeed: true, windGust: true };
   const pts = { gridId: 'OM', gridX: '', gridY: '', timeZone: tz, relativeLocation: null, radarStation: null };
-  return { tz, hours: rows.map(r => r.t), rows, obs, alerts: [], pts, grid: { updateTime: new Date().toISOString() }, sun: sunTimes(now, lat, lon), radar: null, layers, daily: buildDaily(null, daily, tz), health: computeHealth(om, aq, tz, lat), intl: intlRegion(lat, lon) };
+  return { tz, hours: rows.map(r => r.t), rows, obs, alerts: alerts || [], pts, grid: { updateTime: new Date().toISOString() }, sun: sunTimes(now, lat, lon), radar: null, layers, daily: buildDaily(null, daily, tz), health: computeHealth(om, aq, tz, lat), intl: intlRegion(lat, lon) };
 }
 const GEOMET = 'https://geo.weather.gc.ca/geomet';
 const MAP_LAYERS_INTL = [

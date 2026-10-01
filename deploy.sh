@@ -24,7 +24,7 @@ server {
     add_header Cache-Control "no-cache";
     location = /sw.js { add_header Cache-Control "no-cache"; add_header Service-Worker-Allowed "/"; }
     location = /manifest.webmanifest { default_type application/manifest+json; add_header Cache-Control "no-cache"; }
-    location ~ ^/(apod\.json|launches\.json|starlink\.tle)$ { add_header Access-Control-Allow-Origin "*"; add_header Cache-Control "no-cache"; }
+    location ~ ^/(apod\.json|launches\.json|inmet-alerts\.json|starlink\.tle)$ { add_header Access-Control-Allow-Origin "*"; add_header Cache-Control "no-cache"; }
     gzip_types text/plain application/json application/javascript text/css image/svg+xml application/manifest+json;
     add_header X-Content-Type-Options nosniff;
     location / { try_files \$uri \$uri/ /index.html; }
@@ -137,4 +137,31 @@ SHLAUNCH
 sudo chmod +x /usr/local/bin/launch-fetch.sh
 ( crontab -l 2>/dev/null | grep -v launch-fetch; echo "41 * * * * /usr/local/bin/launch-fetch.sh" ) | crontab -
 /usr/local/bin/launch-fetch.sh'
+# Brazilian storm warnings from INMET, hourly.
+# INMET rejects the default curl user agent, and its full payload is 640 KB mostly of base64 icons,
+# so this keeps only the fields the page uses. Result is about 33 KB, 10 KB once nginx gzips it.
+ssh "$HOST" 'sudo tee /usr/local/bin/inmet-fetch.sh >/dev/null <<"SHINMET"
+#!/usr/bin/env bash
+set -u
+OUT=/var/www/weather-now/inmet-alerts.json
+TMP=$(mktemp)
+UA="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
+if curl -fsS -m 90 -A "$UA" "https://apiprevmet3.inmet.gov.br/avisos/ativos" -o "$TMP.raw"; then
+  python3 - "$TMP.raw" "$TMP" <<"PYINMET"
+import json, sys
+raw, out = sys.argv[1], sys.argv[2]
+j = json.load(open(raw))
+keep = ("id", "descricao", "severidade", "aviso_cor", "inicio", "fim", "riscos",
+        "instrucoes", "poligono", "estados")
+rows = [{k: w.get(k) for k in keep} for w in (j.get("hoje") or []) + (j.get("futuro") or [])]
+rows = [w for w in rows if w.get("poligono")]
+json.dump(rows, open(out, "w"), ensure_ascii=False)
+PYINMET
+  if [ -s "$TMP" ]; then mv "$TMP" "$OUT"; chmod 644 "$OUT"; fi
+fi
+rm -f "$TMP" "$TMP.raw"
+SHINMET
+sudo chmod +x /usr/local/bin/inmet-fetch.sh
+( crontab -l 2>/dev/null | grep -v inmet-fetch; echo "9 * * * * /usr/local/bin/inmet-fetch.sh" ) | crontab -
+/usr/local/bin/inmet-fetch.sh'
 echo "deployed to https://${HOST}"

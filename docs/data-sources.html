@@ -71,9 +71,9 @@ footer a{color:var(--accent)}
 </header>
 
 <div class="facts" data-container="Summary numbers">
-  <div class="fact"><div class="v">19</div><div class="k">data providers</div></div>
+  <div class="fact"><div class="v">20</div><div class="k">data providers</div></div>
   <div class="fact"><div class="v">0</div><div class="k">API keys needed</div></div>
-  <div class="fact"><div class="v">3</div><div class="k">cached on our server</div></div>
+  <div class="fact"><div class="v">4</div><div class="k">cached on our server</div></div>
   <div class="fact"><div class="v">4</div><div class="k">countries, any postcode</div></div>
 </div>
 
@@ -84,10 +84,11 @@ footer a{color:var(--accent)}
 
 <div class="callout" data-container="Brazil">
   <p><strong>Brazil, Canada and Mexico.</strong> Type a CEP such as <code>01310-100</code>, a Canadian or Mexican postcode, a city name or a coordinate pair. Everything on the page then works from that point: forecast, hourly rows, 10-day outlook, health scores, radar, satellite, fire detections, sky and launches.</p>
-  <p>Two things are United States only, and the page says so where it matters. The National Weather Service forecast is replaced by Open-Meteo, which is a model rather than a meteorologist's forecast. Official storm warnings are linked to the national agency rather than read, because none of the three publishes a feed open to us. INMET's own site was unreachable from two separate networks when this was checked.</p>
+  <p><strong>Brazil gets real storm warnings.</strong> INMET publishes its warnings as map polygons, and the page tests whether your point falls inside each one, the same way it handles American alerts. Warnings appear in the banner, the alerts tab and the relevant weather tabs, with INMET's own risk text and safety instructions.</p>
+  <p>One thing is still United States only. The National Weather Service forecast is replaced by Open-Meteo, which is a computer model rather than a meteorologist's forecast. Canada and Mexico still link out to their agencies, because neither publishes warnings in a form open to us.</p>
 </div>
 
-<h2>Forecasts and current conditions <span class="n">5 sources</span></h2>
+<h2>Forecasts and current conditions <span class="n">6 sources</span></h2>
 <p class="lede">The National Weather Service is the primary source inside the United States. Open-Meteo covers everywhere else and fills the gaps the weather service leaves.</p>
 <div class="tablewrap"><table>
   <thead><tr><th>Source</th><th>What it provides</th><th>Where it appears</th><th>How we call it</th></tr></thead>
@@ -112,9 +113,13 @@ footer a{color:var(--accent)}
         <td>Turns a Brazilian CEP into coordinates, district, city, state and time zone</td>
         <td>The search box, whenever eight digits are typed</td>
         <td><span class="tag open">direct</span></td></tr>
+    <tr><td class="src"><a href="https://portal.inmet.gov.br/">INMET</a><span class="host">apiprevmet3.inmet.gov.br</span></td>
+        <td>Brazilian storm warnings as polygons, with severity, risks and safety instructions</td>
+        <td>Alert banner, alerts tab and the weather tabs, for Brazilian locations</td>
+        <td><span class="tag cached">cached</span></td></tr>
   </tbody>
 </table></div>
-<p class="note">Outside the United States the dashboard links to the national warning service rather than reading it: Environment Canada, Mexico's Servicio Meteorológico Nacional, and Brazil's INMET. None of the three publishes a warning feed open to us, and INMET's servers did not answer at all when this was checked on 1 October 2026.</p>
+<p class="note">Canada and Mexico still link out to Environment Canada and the Servicio Meteorológico Nacional, because neither publishes warnings in a form open to us. Brazil's INMET does, and is read in full.</p>
 
 <h2>Maps, radar and satellite imagery <span class="n">7 sources</span></h2>
 <p class="lede">NOAA retired its forecast map layers in September 2026. The layers listed here are the ones confirmed to be publishing as of 1 October 2026. Radar, satellite and fire detections work worldwide; the NOAA air-quality layers cover North America only and are hidden elsewhere rather than shown blank.</p>
@@ -214,11 +219,11 @@ footer a{color:var(--accent)}
         <td>Happened twice in September 2026. NOAA dropped ten forecast map layers; NASA moved the picture of the day and shut off its old interface.</td>
         <td>Layers are checked against the provider's live catalogue, and a replacement is wired in. Both outages were fixed the day they were noticed.</td></tr>
     <tr><td><strong>Rate limits</strong></td>
-        <td>Launch Library allows an unregistered caller about 15 requests an hour. CelesTrak and NASA throttle too.</td>
-        <td>Those three are fetched once by our server on a schedule. Viewers read our copy, so the number of visitors does not affect the provider.</td></tr>
+        <td>Launch Library allows an unregistered caller about 15 requests an hour. CelesTrak and NASA throttle too. INMET refuses unfamiliar software and sends 640 KB, mostly icons.</td>
+        <td>Those four are fetched once by our server on a schedule, and trimmed to what the page uses. Viewers read our copy, so the number of visitors does not affect the provider.</td></tr>
     <tr><td><strong>A national agency is closed to us</strong></td>
-        <td>Brazil, Canada and Mexico publish storm warnings, but not in a form we may read. INMET was unreachable entirely on 1 October 2026.</td>
-        <td>The page links to each agency's own warning page instead of pretending to have the data. Everything else on the page works from coordinates, so it is unaffected.</td></tr>
+        <td>Canada and Mexico publish storm warnings, but not in a form we may read.</td>
+        <td>The page links to each agency's own warning page instead of pretending to have the data. Everything else works from coordinates, so it is unaffected.</td></tr>
     <tr><td><strong>A provider is briefly unreachable</strong></td>
         <td>A section would be blank.</td>
         <td>Each cached source has a chain of fallbacks, ending with the last good copy held in the browser. A tab that genuinely has no data says so rather than showing zeros.</td></tr>

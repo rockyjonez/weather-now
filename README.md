@@ -62,8 +62,8 @@ States (Canada, Mexico, Brazil and anywhere else) the page falls back to
 Open-Meteo for current conditions, the hourly rows, the 10-day outlook and the
 health indices; the Map view switches to RainViewer global radar (plus
 Environment Canada GeoMet radar in Canada), nowCOAST lightning and global
-satellite; official warnings are linked to Environment Canada, CONAGUA or INMET
-rather than read, and NESDIS imagery offers CONUS or full disk where no sector
+satellite; Brazilian warnings are read from INMET and matched to the point by polygon;
+Canadian and Mexican warnings are linked to their agency rather than read, and NESDIS imagery offers CONUS or full disk where no sector
 exists. The search box accepts places in the US, Canada, Mexico and Brazil, and resolves
 a Brazilian CEP (eight digits, e.g. `01310-100`) through BrasilAPI, which
 Nominatim often cannot. Satellite fire detections come from NASA GIBS and work
