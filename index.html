@@ -295,7 +295,7 @@ footer{margin-top:28px;font-size:13px;color:var(--muted);line-height:1.6}
 <script>
 'use strict';
 const API = 'https://api.weather.gov';
-const BUILD = '2026-10-01.4';
+const BUILD = '2026-10-01.5';
 const HOUR = 3600e3;
 const $ = s => document.querySelector(s);
 function el(tag, attrs = {}, ...kids) {
@@ -376,10 +376,22 @@ function sunTimes(t, lat, lng) {
 function isNight(t, lat, lon) { const s = sunTimes(t, lat, lon); if (!s) return false; return t < s.sunrise || t >= s.sunset; }
 
 // ---------- NWS fetch ----------
-async function nws(url) {
+// The weather service occasionally answers 200 with a plain-text error instead of JSON.
+// One retry clears nearly all of those; anything left throws a message that says what happened.
+async function nws(url, retry = true) {
   const r = await fetch(url, { headers: { Accept: 'application/geo+json' } });
-  if (!r.ok) { let msg = `${r.status}`; try { const j = await r.json(); msg = j.detail || j.title || msg; } catch (e) { } throw new Error(msg); }
-  return r.json();
+  if (!r.ok) {
+    let msg = `${r.status}`;
+    try { const j = await r.json(); msg = j.detail || j.title || msg; } catch (e) { }
+    if (retry && r.status >= 500) { await new Promise(t => setTimeout(t, 700)); return nws(url, false); }
+    throw new Error(msg);
+  }
+  const text = await r.text();
+  try { return JSON.parse(text); }
+  catch (e) {
+    if (retry) { await new Promise(t => setTimeout(t, 700)); return nws(url, false); }
+    throw new Error(`the weather service returned ${text.trim().slice(0, 40) || 'an empty reply'} instead of data`);
+  }
 }
 function parseValid(vt) {
   const [s, d] = vt.split('/');
@@ -414,9 +426,13 @@ const DEFAULT_LOC = { lat: 40.7141, lon: -74.0744, label: 'Jersey City, NJ 07304
 async function load(lat, lon, label, remember) {
   state.loading = true; state.error = null; state.lat = lat; state.lon = lon; state.label = label || null; render();
   try {
-    let pts = null;
-    try { pts = await nws(`${API}/points/${lat.toFixed(4)},${lon.toFixed(4)}`); } catch (e) { if (!/404|Unable to provide data/i.test(e.message)) throw e; }
-    if (!pts) state.data = await loadIntl(lat, lon);
+    let pts = null, nwsFailure = null;
+    try { pts = await nws(`${API}/points/${lat.toFixed(4)},${lon.toFixed(4)}`); }
+    catch (e) { if (/404|Unable to provide data/i.test(e.message)) pts = null; else nwsFailure = e; }
+    if (!pts) {
+      state.data = await loadIntl(lat, lon);
+      if (nwsFailure) { state.data.degraded = nwsFailure.message; state.data.intl = null; }
+    }
     else {
     const p = pts.properties;
     const [grid, hourly, stations, alerts, dailyNws, om, omH, aq] = await Promise.all([
@@ -444,7 +460,15 @@ async function load(lat, lon, label, remember) {
     loadDailyLearning(state.data);
     if (remember) localStorage.setItem('wx.loc2', JSON.stringify({ lat, lon, label: state.label }));
   } catch (e) {
-    state.error = `Could not load a forecast for this point (${e.message}). The NWS covers the United States; Open-Meteo covers everywhere else.`;
+    try {
+      state.data = await loadIntl(lat, lon);
+      state.data.degraded = e.message;
+      state.data.intl = null;
+      state.updated = Date.now();
+      loadDailyLearning(state.data);
+    } catch (e2) {
+      state.error = `Could not load a forecast for this point (${e.message}).`;
+    }
   }
   state.loading = false; render();
 }
@@ -598,12 +622,16 @@ function renderHeader() {
   else if (d) {
     const rl = d.pts.relativeLocation && d.pts.relativeLocation.properties;
     ll.innerHTML = '';
-    ll.append(el('b', {}, state.label || (rl ? `${rl.city}, ${rl.state}` : 'Selected point')), ` · ${state.lat.toFixed(3)}, ${state.lon.toFixed(3)} · ${d.intl ? `Open-Meteo forecast · ${d.intl.name} is outside NWS coverage` : `${d.pts.gridId} grid ${d.pts.gridX},${d.pts.gridY}`}`);
+    ll.append(el('b', {}, state.label || (rl ? `${rl.city}, ${rl.state}` : 'Selected point')), ` · ${state.lat.toFixed(3)}, ${state.lon.toFixed(3)} · ${d.degraded ? 'Open-Meteo forecast · the weather service is not answering' : d.intl ? `Open-Meteo forecast · ${d.intl.name} is outside NWS coverage` : `${d.pts.gridId} grid ${d.pts.gridX},${d.pts.gridY}`}`);
     if (state.loading) ll.append(' · refreshing…');
   }
   $('#uUS').setAttribute('aria-pressed', US()); $('#uSI').setAttribute('aria-pressed', !US());
 }
 function renderBanner(d) {
+  if (d.degraded) $('#banner').append(el('div', { class: 'banner', style: 'border-left-color:var(--sev-moderate)' },
+    el('b', {}, 'Showing the backup forecast'),
+    el('span', {}, `The National Weather Service is not answering right now, so these numbers come from the Open-Meteo model. US alerts are unavailable until it returns.`),
+    el('button', { class: 'btn', onclick: () => load(state.lat, state.lon, state.label) }, 'Try again')));
   if (!d.alerts.length) return;
   const counts = {}; d.alerts.forEach(a => counts[a.event] = (counts[a.event] || 0) + 1);
   const top = d.alerts[0];

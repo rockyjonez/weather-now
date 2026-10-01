@@ -190,6 +190,11 @@ Upstream services move. Both of these were found and fixed the same day:
 INMET is a useful gotcha: it resets the connection for unfamiliar user agents,
 so it looks unreachable until you send a browser one.
 
+The weather service itself sometimes answers 200 with a plain-text error instead
+of JSON. That used to blank the page. It now retries once, and if the service is
+still unhappy it falls back to the Open-Meteo model, says so in a banner, and
+offers a retry button. A flaky upstream degrades the page; it no longer breaks it.
+
 ## Licence
 
 MIT. See [LICENSE](LICENSE).
